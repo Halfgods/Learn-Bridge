@@ -24,7 +24,7 @@ export function scrapperPath(path: string): string {
 }
 
 /**
- * AI Tutor (FastAPI `ollama.py` on :8000). In dev, leave `VITE_TUTOR_URL` unset so
+ * AI Tutor (FastAPI `main.py` on :8000 via Vite `/llm` proxy). Leave `VITE_TUTOR_URL` unset so
  * `/llm/...` is same-origin and Vite proxies to the tutor server (prefix stripped).
  */
 export function tutorPath(path: string): string {

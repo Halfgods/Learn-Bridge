@@ -24,6 +24,8 @@ type Message = {
   id: string;
   role: "user" | "ai";
   text: string;
+  /** Model reasoning trace (e.g. DeepSeek `/thinking`); shown separately from the answer. */
+  thinking?: string;
   image?: string;
   confidence?: number;
   sources?: string[];
@@ -111,15 +113,22 @@ export function ChatbotPanel() {
           deep_research: deep,
         }),
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string; reply?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        detail?: string;
+        reply?: string;
+        thinking?: string;
+      };
 
       if (!res.ok) {
         const errText =
           typeof data.error === "string"
             ? data.error
-            : res.status === 400
-              ? "That message could not be sent. Check length, wording, or try a clearer study question."
-              : "Nova could not answer right now. Ensure Ollama is running (or Gemini keys are set) and try again.";
+            : typeof data.detail === "string"
+              ? data.detail
+              : res.status === 400
+                ? "That message could not be sent. Check length, wording, or try a clearer study question."
+                : "Nova could not answer right now. Ensure Ollama is running (or Gemini keys are set) and try again.";
         setMessages((m) => [
           ...m,
           {
@@ -133,12 +142,15 @@ export function ChatbotPanel() {
       }
 
       const reply = typeof data.reply === "string" ? data.reply : "";
+      const thinkingRaw = typeof data.thinking === "string" ? data.thinking.trim() : "";
+      const thinking = thinkingRaw.length > 0 ? thinkingRaw : undefined;
       setMessages((m) => [
         ...m,
         {
           id: `a-${Date.now()}`,
           role: "ai",
           text: reply || "(No text returned)",
+          thinking,
         },
       ]);
     } catch {
@@ -147,7 +159,7 @@ export function ChatbotPanel() {
         {
           id: `e-${Date.now()}`,
           role: "ai",
-          text: "Could not reach the tutor service. From Backend/Chatbot_LLM run: python ollama.py --serve (port 8000).",
+          text: "Could not reach the tutor service. From Backend/Chatbot_LLM run: python main.py (uvicorn on port 8000; Vite proxies /llm here).",
           isError: true,
         },
       ]);
@@ -369,6 +381,18 @@ function MessageBubble({ m, onImage }: { m: Message; onImage: (src: string) => v
         <Bot className="w-4 h-4 text-white" />
       </div>
       <div className="flex-1 min-w-0 space-y-2">
+        {m.thinking && !m.isError && (
+          <div
+            className="rounded-2xl rounded-tl-sm border border-border/60 bg-muted/40 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground italic"
+            role="region"
+            aria-label="Reasoning"
+          >
+            <div className="not-italic font-bold text-[10px] uppercase tracking-wide text-muted-foreground/80 mb-1.5">
+              Reasoning
+            </div>
+            <div className="break-words whitespace-pre-wrap">{renderTutorMarkdown(m.thinking)}</div>
+          </div>
+        )}
         <div
           className={cn(
             "rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed break-words whitespace-pre-wrap",
