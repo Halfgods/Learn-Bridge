@@ -81,8 +81,11 @@ export function ChatbotPanel() {
   const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
-    const url = `${tutorPath("/chat/history")}?session_id=${encodeURIComponent(NOVA_SESSION_ID)}`;
-    fetch(url, { method: "DELETE" }).catch(() => {});
+    void fetch(tutorPath("/chat/history/clear"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: NOVA_SESSION_ID }),
+    }).catch(() => {});
   }, []);
 
   const send = useCallback(async () => {
@@ -254,22 +257,22 @@ export function ChatbotPanel() {
 
           {/* Composer */}
           <div className="p-3 border-t border-border/50 shrink-0">
-            <div className="clay-pressed rounded-2xl p-2 flex items-center gap-1">
+            <div className="clay-pressed rounded-2xl p-2 flex items-end gap-1">
               <button
                 type="button"
-                className="h-9 w-9 rounded-xl flex items-center justify-center hover:bg-muted"
+                className="h-9 w-9 shrink-0 rounded-xl flex items-center justify-center hover:bg-muted self-end mb-0.5"
                 aria-label="Attach image"
               >
                 <ImageIcon className="w-4 h-4" />
               </button>
               <button
                 type="button"
-                className="h-9 w-9 rounded-xl flex items-center justify-center hover:bg-muted"
+                className="h-9 w-9 shrink-0 rounded-xl flex items-center justify-center hover:bg-muted self-end mb-0.5"
                 aria-label="Voice input"
               >
                 <Mic className="w-4 h-4" />
               </button>
-              <input
+              <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -278,12 +281,15 @@ export function ChatbotPanel() {
                     void send();
                   }
                 }}
-                placeholder="Ask Nova anything..."
-                className="flex-1 bg-transparent outline-none text-sm font-medium px-2"
+                placeholder="Ask Nova anything…"
+                rows={2}
+                className="flex-1 min-h-[2.75rem] max-h-[10rem] resize-y bg-transparent outline-none text-sm font-medium px-2 py-2 leading-snug break-words whitespace-pre-wrap"
                 disabled={isSending}
+                aria-label="Message to Nova"
               />
               <ClayButton
                 size="icon"
+                className="shrink-0 self-end mb-0.5"
                 onClick={() => void send()}
                 aria-label="Send"
                 disabled={isSending}
@@ -351,7 +357,7 @@ function MessageBubble({ m, onImage }: { m: Message; onImage: (src: string) => v
   if (m.role === "user") {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] gradient-primary text-white rounded-2xl rounded-tr-sm px-4 py-3 clay-sm text-sm font-medium">
+        <div className="max-w-[85%] gradient-primary text-white rounded-2xl rounded-tr-sm px-4 py-3 clay-sm text-sm font-medium break-words whitespace-pre-wrap">
           {m.text}
         </div>
       </div>
@@ -365,7 +371,7 @@ function MessageBubble({ m, onImage }: { m: Message; onImage: (src: string) => v
       <div className="flex-1 min-w-0 space-y-2">
         <div
           className={cn(
-            "rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed",
+            "rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed break-words whitespace-pre-wrap",
             m.isError
               ? "bg-destructive/10 text-destructive border border-destructive/25"
               : "bg-muted",

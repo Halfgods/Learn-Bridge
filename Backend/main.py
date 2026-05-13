@@ -3,6 +3,7 @@ from flask_cors import CORS
 from pymongo import MongoClient
 from pymongo.errors import ConfigurationError
 import os
+import re
 import datetime
 from functools import wraps
 import jwt
@@ -176,16 +177,25 @@ def get_chapter_pdf():
     chapter_name = request.args.get('chapterName')
     if not all([std, subject_name, chapter_name]):
         return jsonify({"error": "Missing required parameters: std, subjectName, chapterName"}), 400
+    subject_name = subject_name.strip()
+    chapter_name = " ".join(chapter_name.split())
     try:
         pdf_doc = pdfs_collection.find_one({
             'std': std,
             'subjectName': subject_name,
             'chapterName': chapter_name
         }, {'_id': 0, 'ncertUrl': 1})
-        
+
+        if not pdf_doc:
+            pdf_doc = pdfs_collection.find_one({
+                'std': std,
+                'subjectName': re.compile(f'^{re.escape(subject_name)}$', re.I),
+                'chapterName': re.compile(f'^{re.escape(chapter_name)}$', re.I),
+            }, {'_id': 0, 'ncertUrl': 1})
+
         if not pdf_doc:
             return jsonify({"error": "PDF not found"}), 404
-            
+
         return jsonify({"ncertUrl": pdf_doc.get('ncertUrl')}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500

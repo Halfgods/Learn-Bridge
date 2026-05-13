@@ -20,6 +20,7 @@ CLI commands:
 import argparse
 import json
 import os
+import re
 import sys
 import logging
 from collections import defaultdict
@@ -212,11 +213,58 @@ async def _ollama_complete(model: str, messages: list[dict], think: bool = False
     return text
 
 
+def _redact_secrets(text: str) -> str:
+    """Remove API keys and query key= params from error strings (never leak to clients or logs raw)."""
+    t = re.sub(r"key=[A-Za-z0-9_\-._~]+", "key=<redacted>", text, flags=re.I)
+    t = re.sub(r"\bAIzaSy[A-Za-z0-9_-]{10,}\b", "<redacted>", t)
+    return t
+
+
+def _normalize_gemini_key(key: str) -> str | None:
+    """Strip whitespace; fix common paste typo (Aiza… instead of AIza…)."""
+    k = key.strip()
+    if not k:
+        return None
+    low4 = k[:4].lower()
+    if low4 == "aiza" and len(k) > 4:
+        k = "AIza" + k[4:]
+    if not k.startswith("AIza") or len(k) < 20:
+        logger.warning("Skipping invalid Gemini key (expected to start with AIza and be a full API key).")
+        return None
+    return k
+
+
 def _gemini_api_keys() -> list[str]:
     raw = os.environ.get("GEMINI_API_KEYS", "").strip()
     if not raw:
         return []
-    return [k.strip() for k in raw.split(",") if k.strip()]
+    out: list[str] = []
+    for part in raw.split(","):
+        nk = _normalize_gemini_key(part)
+        if nk:
+            out.append(nk)
+    return out
+
+
+def _user_friendly_llm_failure(exc: Exception) -> str:
+    """Short message for JSON responses — no URLs or keys."""
+    raw = _redact_secrets(str(exc))
+    low = raw.lower()
+    if "400" in raw or "bad request" in low:
+        return (
+            "Backup AI (Gemini) rejected the request. "
+            "Fix GEMINI_API_KEYS in Backend/.env — keys must start with AIzaSy (watch for typos like AizaSy)."
+        )
+    if "401" in raw or "403" in raw or "permission" in low:
+        return "Backup AI (Gemini) auth failed. Check API key permissions and billing."
+    if "404" in raw or "not found" in low:
+        return (
+            "Backup AI model name may be wrong for this API version. "
+            "Try GEMINI_MODEL=gemini-1.5-flash in Backend/.env."
+        )
+    if "429" in raw or "resource exhausted" in low:
+        return "Backup AI (Gemini) rate limit reached. Try again shortly."
+    return "Ollama and backup AI are unavailable. Start Ollama and/or fix Gemini keys, then retry."
 
 
 async def _gemini_generate(messages: list[dict]) -> str:
@@ -260,9 +308,9 @@ async def _gemini_generate(messages: list[dict]) -> str:
             raise RuntimeError("Empty Gemini text")
         except Exception as e:
             last_err = e
-            logger.warning("Gemini request failed: %s", e)
+            logger.warning("Gemini request failed: %s", _redact_secrets(str(e)))
             continue
-    raise RuntimeError(f"All Gemini keys failed: {last_err}")
+    raise RuntimeError(f"All Gemini keys failed: {_redact_secrets(str(last_err)) if last_err else 'unknown'}")
 
 
 async def _stream_deepseek(session_id: str, query: str, model: str):
@@ -380,6 +428,17 @@ class ChatSyncIn(BaseModel):
     deep_research: bool = False
 
 
+class ClearHistoryIn(BaseModel):
+    session_id: str = "default"
+
+
+@app.post("/chat/history/clear")
+async def api_clear_history_post(body: ClearHistoryIn):
+    """Clear session history (POST avoids some dev proxies mishandling DELETE)."""
+    _sessions.pop(body.session_id, None)
+    return {"cleared": True, "session_id": body.session_id}
+
+
 @app.post("/chat/sync")
 async def chat_sync(body: ChatSyncIn):
     """Non-streaming chat for web UI: Ollama first, Gemini if Ollama fails."""
@@ -409,7 +468,7 @@ async def chat_sync(body: ChatSyncIn):
             if _sessions.get(sid) and _sessions[sid][-1].get("role") == "user":
                 _sessions[sid].pop()
             return JSONResponse(
-                {"error": f"Nova is temporarily unavailable. ({gem_exc})"},
+                {"error": f"Nova is temporarily unavailable. {_user_friendly_llm_failure(gem_exc)}"},
                 status_code=503,
             )
 
