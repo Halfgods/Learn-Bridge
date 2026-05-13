@@ -1,24 +1,54 @@
 from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
 from pymongo import MongoClient
+from pymongo.errors import ConfigurationError
 import os
 import datetime
 from functools import wraps
 import jwt
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
-# Load environment variables
-load_dotenv()
+# Load environment variables from this file's directory (works regardless of cwd)
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 app = Flask(__name__)
-# Enable CORS for the React frontend
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+
+
+def _cors_allowed_origins() -> list[str]:
+    """Origins allowed to call this API (browser Origin header, incl. port)."""
+    default = (
+        "http://localhost:5173,http://127.0.0.1:5173,"
+        "http://localhost:8080,http://127.0.0.1:8080,"
+        "http://localhost:8081,http://127.0.0.1:8081,"
+        "http://localhost:3000,http://127.0.0.1:3000"
+    )
+    raw = os.environ.get("CORS_ORIGINS", default)
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+
+# Match all paths so every route gets CORS headers; explicit origins so e.g.
+# http://localhost:8081 → http://127.0.0.1:5000 works (different host/port).
+CORS(
+    app,
+    resources={
+        r".*": {
+            "origins": _cors_allowed_origins(),
+            "allow_headers": ["Content-Type", "Authorization"],
+            "methods": ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        }
+    },
+)
 # Configuration
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-prod')
-MONGO_URI = os.environ.get('MONGO_URI', 'mongodb://localhost:27017/aitutor')
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY") or os.environ.get(
+    "JWT_SECRET", "dev-secret-key-change-in-prod"
+)
+MONGO_URI = os.environ.get("MONGO_URI") or "mongodb://localhost:27017/aitutor"
 # Database Connection
 try:
     client = MongoClient(MONGO_URI)
-    db = client.get_database()
+    try:
+        db = client.get_database()
+    except ConfigurationError:
+        db = client[os.environ.get("MONGO_DB_NAME", "aitutor")]
     print(f"✅ Connected to MongoDB: {db.name}")
 except Exception as e:
     print(f"❌ Failed to connect to MongoDB: {e}")

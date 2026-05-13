@@ -156,14 +156,41 @@ function Chapter() {
               <div className="flex justify-center py-12"><Loader2 className="w-10 h-10 animate-spin text-primary"/></div>
             ) : (
               <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
-                {(selectedResource === 'shaalaa' ? resourceData?.links : resourceData?.videos)?.map((link: string, idx: number) => (
-                  <a key={idx} href={link} target="_blank" rel="noreferrer" className="block p-4 clay-sm bg-muted/50 rounded-xl hover:bg-muted hover:-translate-y-0.5 transition-all font-medium break-all text-primary hover:underline">
-                    {link}
-                  </a>
-                ))}
-                {!(selectedResource === 'shaalaa' ? resourceData?.links : resourceData?.videos)?.length && (
-                  <p className="text-muted-foreground text-center py-8 font-medium">No resources found for this chapter.</p>
-                )}
+                {(() => {
+                  const rows =
+                    selectedResource === "shaalaa"
+                      ? ((resourceData?.links as string[] | undefined) ?? []).map((href) => ({
+                          href,
+                          label: href,
+                        }))
+                      : ((resourceData?.videos as (string | { url?: string; title?: string })[] | undefined) ?? []).map(
+                          (v) => ({
+                            href: typeof v === "string" ? v : v?.url ?? "",
+                            label: typeof v === "string" ? v : v?.title ?? v?.url ?? "",
+                          })
+                        );
+                  const filtered = rows.filter((row) => row.href);
+                  return (
+                    <>
+                      {filtered.map((row, idx: number) => (
+                        <a
+                          key={idx}
+                          href={row.href}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block p-4 clay-sm bg-muted/50 rounded-xl hover:bg-muted hover:-translate-y-0.5 transition-all font-medium break-all text-primary hover:underline"
+                        >
+                          {row.label}
+                        </a>
+                      ))}
+                      {!filtered.length ? (
+                        <p className="text-muted-foreground text-center py-8 font-medium">
+                          No resources found for this chapter.
+                        </p>
+                      ) : null}
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>
