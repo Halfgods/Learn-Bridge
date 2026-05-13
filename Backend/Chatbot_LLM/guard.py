@@ -25,6 +25,8 @@ _BLOCKED_SUBSTRINGS = (
     "xxx",
     "slut",
     "whore",
+    "Sex",
+    "sex"
 )
 
 _MIN_LEN = 2
