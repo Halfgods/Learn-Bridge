@@ -1,41 +1,57 @@
-# Root ignore for TISD-Final workspace
+# Node.js / Frontend
+node_modules/
+dist/
+build/
+.next/
+.public/
+.cache/
+.vite/
+# Yarn / npm lockfiles
+yarn.lock
+package-lock.json
+pnpm-lock.yaml
 # Environment files
 .env
 .env.*
-
-# Node / JavaScript dependencies
-node_modules/
-**/node_modules/
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
-
-# Build outputs and caches
-dist/
-build/
-.cache/
-.vite/
-*.log
-
-# Editor temporary files
-.DS_Store
-Thumbs.db
-*.swp
-*.swo
-.idea/
-.vscode/
-
-# Ignore attached reference directories
-ncert-downloader_reference/
-reference_backend/
-
-# Python artifacts (if any)
+# Python / Backend
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
-
+*.egg-info/
+.eggs/
+*.egg
+*.whl
+*.log
+# Virtual environment
+.venv/
+env/
+venv/
+# Django / Flask specific
+instance/
+.mypy_cache/
+# IDE / editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+# OS generated files
+.DS_Store
+Thumbs.db
+# Logs
+logs/
+*.log
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+*.cover
+*.db
+# Test artifacts
+.pytest_cache/
 # Misc
-coverage/
-coverage.*
-**/.DS_Store
+*.bak
+*.tmp
+*.swp

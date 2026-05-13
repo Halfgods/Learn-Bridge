@@ -26,10 +26,10 @@ function Chapter() {
     queryKey: ['scrapped-resources', selectedResource, std, title],
     queryFn: async () => {
       if (selectedResource === 'shaalaa') {
-        const res = await fetch(`http://127.0.0.1:8081/shaalaalinks?std=${std}&query=${encodeURIComponent(title)}`);
+        const res = await fetch(`http://127.0.0.1:8080/shaalaalinks?std=${std}&query=${encodeURIComponent(title)}`);
         return res.json();
       } else if (selectedResource === 'yt') {
-        const res = await fetch(`http://127.0.0.1:8081/ytlinks?std=${std}&query=${encodeURIComponent(title)}`);
+        const res = await fetch(`http://127.0.0.1:8080/ytlinks?std=${std}&query=${encodeURIComponent(title)}`);
         return res.json();
       }
       return null;
