@@ -1,0 +1,41 @@
+# Root ignore for TISD-Final workspace
+# Environment files
+.env
+.env.*
+
+# Node / JavaScript dependencies
+node_modules/
+**/node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build outputs and caches
+dist/
+build/
+.cache/
+.vite/
+*.log
+
+# Editor temporary files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Ignore attached reference directories
+ncert-downloader_reference/
+reference_backend/
+
+# Python artifacts (if any)
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Misc
+coverage/
+coverage.*
+**/.DS_Store
