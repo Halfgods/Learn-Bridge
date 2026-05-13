@@ -1,5 +1,6 @@
 const envBase = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
 const scrapperBase = (import.meta.env.VITE_SCRAPPER_URL as string | undefined)?.trim();
+const tutorBase = (import.meta.env.VITE_TUTOR_URL as string | undefined)?.trim();
 
 /**
  * Flask API URL path. In dev, leave `VITE_API_URL` unset so calls stay same-origin
@@ -20,4 +21,14 @@ export function scrapperPath(path: string): string {
   const p = path.startsWith("/") ? path : `/${path}`;
   if (scrapperBase) return `${scrapperBase.replace(/\/$/, "")}${p}`;
   return p;
+}
+
+/**
+ * AI Tutor (FastAPI `ollama.py` on :8000). In dev, leave `VITE_TUTOR_URL` unset so
+ * `/llm/...` is same-origin and Vite proxies to the tutor server (prefix stripped).
+ */
+export function tutorPath(path: string): string {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  if (tutorBase) return `${tutorBase.replace(/\/$/, "")}${p}`;
+  return `/llm${p}`;
 }
