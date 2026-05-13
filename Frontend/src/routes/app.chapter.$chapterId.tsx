@@ -3,6 +3,7 @@ import { useState } from "react";
 import { ArrowLeft, FileText, Download, Highlighter, NotebookPen, Youtube, ExternalLink, Sparkles, Clock, TrendingUp, AlertTriangle, ZoomIn, ZoomOut, Loader2, X } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
+import { apiPath } from "@/lib/api";
 
 export const Route = createFileRoute("/app/chapter/$chapterId")({
   head: () => ({ meta: [{ title: "Chapter — Nova Learn" }] }),
@@ -40,7 +41,7 @@ function Chapter() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['pdf', std, subjectName, title],
     queryFn: async () => {
-      const res = await fetch(`http://127.0.0.1:5000/api/content/pdf?std=${std}&subjectName=${encodeURIComponent(subjectName)}&chapterName=${encodeURIComponent(title)}`);
+      const res = await fetch(apiPath(`/api/content/pdf?std=${std}&subjectName=${encodeURIComponent(subjectName)}&chapterName=${encodeURIComponent(title)}`));
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.error || "Failed to load PDF");

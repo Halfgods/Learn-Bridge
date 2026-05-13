@@ -4,6 +4,7 @@ import { Blobs } from "@/components/Blobs";
 import { ClayButton } from "@/components/ClayButton";
 import { ClayInput } from "@/components/ClayInput";
 import { MascotBadge } from "@/components/MascotBadge";
+import { apiPath } from "@/lib/api";
 
 export const Route = createFileRoute("/login")({
   head: () => ({ meta: [{ title: "Log in — Nova Learn" }, { name: "description", content: "Welcome back to Nova Learn." }] }),
@@ -22,7 +23,7 @@ function Login() {
     e.preventDefault();
     setError(null);
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/auth/login", {
+      const res = await fetch(apiPath("/api/auth/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })

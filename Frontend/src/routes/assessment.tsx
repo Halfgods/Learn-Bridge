@@ -5,6 +5,7 @@ import { Blobs } from "@/components/Blobs";
 import { ClayButton } from "@/components/ClayButton";
 import { MascotBadge } from "@/components/MascotBadge";
 import { cn } from "@/lib/utils";
+import { apiPath } from "@/lib/api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 export const Route = createFileRoute("/assessment")({
@@ -26,7 +27,7 @@ function Assessment() {
     queryFn: async () => {
       const token = localStorage.getItem('token');
       if (!token) return null;
-      const res = await fetch('http://127.0.0.1:5000/api/auth/me', {
+      const res = await fetch(apiPath("/api/auth/me"), {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!res.ok) return null;
@@ -44,7 +45,7 @@ function Assessment() {
         queryClient.prefetchQuery({
           queryKey: ['chapters', user.grade, subject],
           queryFn: async () => {
-            const res = await fetch(`http://127.0.0.1:5000/api/curriculum/class/${user.grade}/subject/${encodeURIComponent(subject)}/chapters`);
+            const res = await fetch(apiPath(`/api/curriculum/class/${user.grade}/subject/${encodeURIComponent(subject)}/chapters`));
             if (!res.ok) throw new Error("Failed to prefetch");
             return res.json();
           },
@@ -57,7 +58,7 @@ function Assessment() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['random-assessment'],
     queryFn: async () => {
-      const res = await fetch('http://127.0.0.1:5000/api/assessment/random');
+      const res = await fetch(apiPath("/api/assessment/random"));
       if (!res.ok) throw new Error("Failed to fetch questions");
       return res.json();
     },

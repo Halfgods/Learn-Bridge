@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Calculator, Beaker, BookOpen, Globe2, Cpu, Languages, Flame, Bell, ArrowRight, Trophy, Clock, Search } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
+import { apiPath } from "@/lib/api";
 
 export const Route = createFileRoute("/app/")({
   head: () => ({ meta: [{ title: "Dashboard — Nova Learn" }] }),
@@ -25,7 +26,7 @@ function Dashboard() {
       const token = localStorage.getItem('token');
       if (!token) throw new Error("No token");
       
-      const res = await fetch('http://127.0.0.1:5000/api/auth/me', {
+      const res = await fetch(apiPath("/api/auth/me"), {
         headers: {
           'Authorization': `Bearer ${token}`
         }

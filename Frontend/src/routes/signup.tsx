@@ -6,6 +6,7 @@ import { ClayButton } from "@/components/ClayButton";
 import { ClayInput } from "@/components/ClayInput";
 import { MascotBadge } from "@/components/MascotBadge";
 import { cn } from "@/lib/utils";
+import { apiPath } from "@/lib/api";
 
 export const Route = createFileRoute("/signup")({
   head: () => ({ meta: [{ title: "Sign up — Nova Learn" }, { name: "description", content: "Create your free Nova Learn account." }] }),
@@ -34,7 +35,7 @@ function Signup() {
       setStep(step + 1);
     } else {
       try {
-        const res = await fetch("http://127.0.0.1:5000/api/auth/register", {
+        const res = await fetch(apiPath("/api/auth/register"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name, email, password, grade, board })

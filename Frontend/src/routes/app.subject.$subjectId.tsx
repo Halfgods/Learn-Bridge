@@ -3,6 +3,7 @@ import { useState } from "react";
 import { ChevronRight, Search, Sparkles, FileText, Network, Youtube, NotebookPen, BarChart3, ArrowLeft, BookOpen, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
+import { apiPath } from "@/lib/api";
 
 export const Route = createFileRoute("/app/subject/$subjectId")({
   head: () => ({ meta: [{ title: "Subject — Nova Learn" }] }),
@@ -49,7 +50,7 @@ function SubjectExplorer() {
     queryFn: async () => {
       const token = localStorage.getItem('token');
       if (!token) throw new Error("No token");
-      const res = await fetch('http://127.0.0.1:5000/api/auth/me', {
+      const res = await fetch(apiPath("/api/auth/me"), {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!res.ok) throw new Error("Unauthorized");
@@ -64,7 +65,7 @@ function SubjectExplorer() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['chapters', std, dbSubjectName],
     queryFn: async () => {
-      const res = await fetch(`http://127.0.0.1:5000/api/curriculum/class/${std}/subject/${encodeURIComponent(dbSubjectName)}/chapters`);
+      const res = await fetch(apiPath(`/api/curriculum/class/${std}/subject/${encodeURIComponent(dbSubjectName)}/chapters`));
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
