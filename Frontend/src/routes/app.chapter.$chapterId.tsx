@@ -3,7 +3,7 @@ import { useState } from "react";
 import { ArrowLeft, FileText, Download, Highlighter, NotebookPen, Youtube, ExternalLink, Sparkles, Clock, TrendingUp, AlertTriangle, ZoomIn, ZoomOut, Loader2, X } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
-import { apiPath } from "@/lib/api";
+import { apiPath, scrapperPath } from "@/lib/api";
 
 export const Route = createFileRoute("/app/chapter/$chapterId")({
   head: () => ({ meta: [{ title: "Chapter — Nova Learn" }] }),
@@ -26,11 +26,16 @@ function Chapter() {
   const { data: resourceData, isLoading: isResourceLoading } = useQuery({
     queryKey: ['scrapped-resources', selectedResource, std, title],
     queryFn: async () => {
-      if (selectedResource === 'shaalaa') {
-        const res = await fetch(`http://127.0.0.1:8080/shaalaalinks?std=${std}&query=${encodeURIComponent(title)}`);
+      if (selectedResource === "shaalaa") {
+        const res = await fetch(
+          `${scrapperPath("/shaalaalinks")}?std=${std}&query=${encodeURIComponent(title)}`
+        );
         return res.json();
-      } else if (selectedResource === 'yt') {
-        const res = await fetch(`http://127.0.0.1:8080/ytlinks?std=${std}&query=${encodeURIComponent(title)}`);
+      }
+      if (selectedResource === "yt") {
+        const res = await fetch(
+          `${scrapperPath("/ytlinks")}?std=${std}&query=${encodeURIComponent(title)}`
+        );
         return res.json();
       }
       return null;
