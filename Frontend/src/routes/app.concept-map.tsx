@@ -136,9 +136,7 @@ function ConceptMapPage() {
         <h1 className="text-2xl md:text-3xl font-black tracking-tight mb-1 flex items-center gap-3">
           <Brain className="w-8 h-8 text-clay-purple" /> Concept Map
         </h1>
-        <p className="text-sm text-muted-foreground font-bold">
-          Std {std} \u00B7 {board} \u2014 Visualize prerequisite chains and find weak spots
-        </p>
+        
       </header>
 
       <div className="flex gap-2 md:gap-3 mb-4 md:mb-6 overflow-x-auto scrollbar-hide -mx-4 md:mx-0 px-4 md:px-0 pb-2">

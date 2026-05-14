@@ -724,12 +724,12 @@ def add_chapter_pdf(current_user):
         body = request.get_json(force=True) or {}
     except Exception:
         return jsonify({"error": "Invalid JSON body"}), 400
-    std = body.get('std', type=int)
+    std = body.get('std')
     subject_name = (body.get('subjectName') or '').strip()
     chapter_name = ' '.join((body.get('chapterName') or '').split())
     file_b64 = (body.get('file') or '').strip()
     label = (body.get('label') or '').strip() or 'Untitled PDF'
-    if not all([std is not None, subject_name, chapter_name, file_b64]):
+    if std is None or not subject_name or not chapter_name or not file_b64:
         return jsonify({"error": "Missing fields: std, subjectName, chapterName, file (base64)"}), 400
     try:
         import base64
@@ -749,7 +749,7 @@ def add_chapter_pdf(current_user):
             'filename': unique_name,
             'label': label,
             'uploadedBy': teacher_name,
-            'createdAt': datetime.datetime.utcnow().isoformat(),
+            'createdAt': datetime.datetime.now(datetime.timezone.utc).isoformat(),
         }
         chapter_pdfs_collection.insert_one(doc)
         return jsonify({"status": "added", "pdf": doc}), 201
