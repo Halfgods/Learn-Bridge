@@ -21,6 +21,7 @@ import {
   Pen,
   Save,
   Plus,
+  Image,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
@@ -102,9 +103,10 @@ function Chapter() {
         ),
       );
       const data = await parseApiJson<{
-        questions?: { q: string; options: string[]; correct: number }[];
+        questions?: QuizQuestion[];
+        updatedBy?: string;
       }>(res);
-      return data.questions ?? [];
+      return data;
     },
     enabled: !quizDone,
   });
@@ -234,6 +236,30 @@ function Chapter() {
   });
 
   const pdfFileRef = useRef<HTMLInputElement>(null);
+
+  // Teacher quiz editing
+  type QuizQuestion = { q: string; options: string[]; correct: number; image?: string };
+  const [teacherQuizEdit, setTeacherQuizEdit] = useState(false);
+  const [editQuestions, setEditQuestions] = useState<QuizQuestion[]>([]);
+
+  const saveChapterQuizMut = useMutation({
+    mutationFn: async (questions: QuizQuestion[]) => {
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("Login required");
+      const res = await fetch(apiPath("/api/chapter/quiz"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ std, subjectName, chapterName: title, questions }),
+      });
+      const body = await parseApiJson<{ status: string; error?: string }>(res);
+      if (!res.ok) throw new Error(body.error || "Failed");
+      return body;
+    },
+    onSuccess: () => {
+      setTeacherQuizEdit(false);
+      queryClient.invalidateQueries({ queryKey: ["chapter-quiz", std, subjectName, title] });
+    },
+  });
 
   const activePdfUrl = data?.proxyUrl ?? null;
 
@@ -417,7 +443,7 @@ function Chapter() {
           ))}
         </div>
         <ChapterQuiz
-          questions={chapterQuizQ.data ?? []}
+          questions={chapterQuizQ.data?.questions ?? []}
           isLoading={chapterQuizQ.isLoading}
           idx={quizIdx}
           picked={quizPicked}
@@ -427,7 +453,7 @@ function Chapter() {
             const next = [...quizAnswers, quizPicked];
             setQuizAnswers(next);
             setQuizPicked(null);
-            const qs = chapterQuizQ.data ?? [];
+            const qs = chapterQuizQ.data?.questions ?? [];
             if (quizIdx < qs.length - 1) {
               setQuizIdx(quizIdx + 1);
             } else {
@@ -444,6 +470,7 @@ function Chapter() {
           isSubmitting={chapterMut.isPending}
           done={quizDone}
           result={quizResult}
+          updatedBy={chapterQuizQ.data?.updatedBy}
           onRetry={() => {
             setQuizDone(false);
             setQuizIdx(0);
@@ -451,6 +478,10 @@ function Chapter() {
             setQuizAnswers([]);
             setQuizResult(null);
           }}
+          onEdit={isTeacher ? () => {
+            setEditQuestions(JSON.parse(JSON.stringify(chapterQuizQ.data?.questions ?? [])));
+            setTeacherQuizEdit(true);
+          } : undefined}
         />
       </section>
       <section>
@@ -670,6 +701,166 @@ function Chapter() {
           </div>
         </div>
       ) : null}
+
+      {/* Teacher quiz editor modal */}
+      {teacherQuizEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={() => setTeacherQuizEdit(false)}
+          />
+          <div className="relative w-full max-w-2xl clay-lg bg-card p-6 z-10 space-y-4 animate-in zoom-in-95 duration-200 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between shrink-0">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Brain className="w-5 h-5 text-primary" /> Edit Chapter Quiz
+              </h2>
+              <button
+                onClick={() => setTeacherQuizEdit(false)}
+                className="p-2 rounded-full bg-muted/50 hover:bg-muted transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+              {editQuestions.map((q, qi) => (
+                <div key={qi} className="clay-sm bg-muted/30 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-muted-foreground">Question {qi + 1}</span>
+                    <button
+                      onClick={() => setEditQuestions((prev) => prev.filter((_, i) => i !== qi))}
+                      className="text-destructive hover:bg-destructive/10 p-1 rounded-lg transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      value={q.q}
+                      onChange={(e) => {
+                        const next = [...editQuestions];
+                        next[qi] = { ...next[qi], q: e.target.value };
+                        setEditQuestions(next);
+                      }}
+                      placeholder="Question text"
+                      className="flex-1 h-9 rounded-xl border-2 border-muted bg-background px-3 text-xs font-bold outline-none"
+                    />
+                    <input
+                      value={q.image || ""}
+                      onChange={(e) => {
+                        const next = [...editQuestions];
+                        next[qi] = { ...next[qi], image: e.target.value };
+                        setEditQuestions(next);
+                      }}
+                      placeholder="Image URL (optional)"
+                      className="w-40 h-9 rounded-xl border-2 border-muted bg-background px-3 text-xs font-bold outline-none"
+                    />
+                  </div>
+                  {q.image && (
+                    <img
+                      src={q.image}
+                      alt=""
+                      className="h-20 rounded-lg object-contain bg-muted/50"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                    />
+                  )}
+                  <div className="grid grid-cols-2 gap-2">
+                    {q.options.map((opt, oi) => (
+                      <div key={oi} className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name={`correct-${qi}`}
+                          checked={q.correct === oi}
+                          onChange={() => {
+                            const next = [...editQuestions];
+                            next[qi] = { ...next[qi], correct: oi };
+                            setEditQuestions(next);
+                          }}
+                          className="accent-primary"
+                        />
+                        <input
+                          value={opt}
+                          onChange={(e) => {
+                            const next = [...editQuestions];
+                            const opts = [...next[qi].options];
+                            opts[oi] = e.target.value;
+                            next[qi] = { ...next[qi], options: opts };
+                            setEditQuestions(next);
+                          }}
+                          placeholder={`Option ${oi + 1}`}
+                          className="flex-1 h-8 rounded-lg border-2 border-muted bg-background px-2 text-xs font-bold outline-none"
+                        />
+                        {q.options.length > 2 && (
+                          <button
+                            onClick={() => {
+                              const next = [...editQuestions];
+                              next[qi] = {
+                                ...next[qi],
+                                options: next[qi].options.filter((_, i) => i !== oi),
+                                correct: next[qi].correct === oi ? 0 : next[qi].correct > oi ? next[qi].correct - 1 : next[qi].correct,
+                              };
+                              setEditQuestions(next);
+                            }}
+                            className="text-muted-foreground hover:text-destructive p-1 rounded-lg transition-colors"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => {
+                      const next = [...editQuestions];
+                      next[qi] = { ...next[qi], options: [...next[qi].options, ""] };
+                      setEditQuestions(next);
+                    }}
+                    className="text-xs font-bold text-primary hover:underline"
+                  >
+                    + Add option
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 pt-2">
+              <button
+                onClick={() => {
+                  setEditQuestions((prev) => [...prev, { q: "", options: ["", ""], correct: 0 }]);
+                }}
+                className="h-9 px-4 rounded-xl clay-sm bg-card flex items-center gap-1.5 text-xs font-bold text-primary hover:scale-105 transition-transform"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add question
+              </button>
+              <div className="flex-1" />
+              <button
+                onClick={() => {
+                  setTeacherQuizEdit(false);
+                }}
+                className="h-9 px-4 rounded-xl clay-sm bg-card flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:scale-105 transition-transform"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const valid = editQuestions.filter((q) => q.q.trim() && q.options.filter((o) => o.trim()).length >= 2);
+                  if (valid.length === 0) return;
+                  saveChapterQuizMut.mutate(valid);
+                }}
+                disabled={saveChapterQuizMut.isPending || editQuestions.filter((q) => q.q.trim() && q.options.filter((o) => o.trim()).length >= 2).length === 0}
+                className="h-9 px-4 rounded-xl clay-sm bg-card flex items-center gap-1.5 text-xs font-bold text-emerald-500 hover:scale-105 transition-transform disabled:opacity-50"
+              >
+                {saveChapterQuizMut.isPending ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Save className="w-3.5 h-3.5" />
+                )}
+                Save quiz
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -694,9 +885,11 @@ function ChapterQuiz({
   isSubmitting,
   done,
   result,
+  updatedBy,
   onRetry,
+  onEdit,
 }: {
-  questions: { q: string; options: string[]; correct: number }[];
+  questions: { q: string; options: string[]; correct: number; image?: string }[];
   isLoading: boolean;
   idx: number;
   picked: number | null;
@@ -705,7 +898,9 @@ function ChapterQuiz({
   isSubmitting: boolean;
   done: boolean;
   result: { score: number; total: number } | null;
+  updatedBy?: string;
   onRetry: () => void;
+  onEdit?: () => void;
 }) {
   if (isLoading) {
     return (
@@ -755,9 +950,24 @@ function ChapterQuiz({
         <h3 className="font-extrabold flex items-center gap-2">
           <Brain className="w-4 h-4 text-primary" /> Chapter Quiz
         </h3>
-        <span className="text-xs font-bold text-muted-foreground">
-          {idx + 1}/{questions.length}
-        </span>
+        <div className="flex items-center gap-2">
+          {updatedBy && (
+            <span className="text-xs text-muted-foreground/70">
+              Edited by <span className="font-bold">{updatedBy}</span>
+            </span>
+          )}
+          {onEdit && (
+            <button
+              onClick={onEdit}
+              className="h-8 px-3 rounded-xl clay-sm bg-card flex items-center gap-1.5 text-xs font-bold text-primary hover:scale-105 active:scale-95 transition-transform"
+            >
+              <Pen className="w-3.5 h-3.5" /> Edit
+            </button>
+          )}
+          <span className="text-xs font-bold text-muted-foreground">
+            {idx + 1}/{questions.length}
+          </span>
+        </div>
       </div>
       <div className="h-2 rounded-full clay-pressed bg-muted w-full">
         <div
@@ -765,6 +975,14 @@ function ChapterQuiz({
           style={{ width: `${progress}%` }}
         />
       </div>
+      {cur.image && (
+        <img
+          src={cur.image}
+          alt="Question"
+          className="w-full max-h-48 object-contain rounded-xl clay-sm bg-muted/50"
+          loading="lazy"
+        />
+      )}
       <p className="font-extrabold text-lg leading-snug">{cur.q}</p>
       <div className="grid sm:grid-cols-2 gap-2">
         {cur.options.map((opt, i) => (

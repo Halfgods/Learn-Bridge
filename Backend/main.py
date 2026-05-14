@@ -80,6 +80,7 @@ quiz_attempts_collection = db["quiz_attempts"]
 chapter_attempts_collection = db["chapter_attempts"]
 concept_graphs_collection = db["concept_graphs"]
 chapter_pdfs_collection = db["chapter_pdfs"]
+chapter_teacher_quizzes_collection = db["chapter_teacher_quizzes"]
 
 TEACHER_ACCESS_CODE = (os.environ.get("TEACHER_ACCESS_CODE") or "NOVA-TEACHER").strip()
 
@@ -1349,13 +1350,26 @@ def kg_gaps(current_user):
 # ==========================================
 @app.route('/api/chapter/quiz', methods=['GET'])
 def get_chapter_quiz():
-    """Auto-generate 3 MCQs for a chapter based on its name and subject."""
+    """Return teacher-customized quiz for a chapter, or auto-generate if none."""
     std = request.args.get('std', type=int)
     subject = request.args.get('subject')
     chapter = request.args.get('chapter')
     if not std or not subject or not chapter:
         return jsonify({"error": "std, subject, chapter are required"}), 400
     try:
+        # Check for teacher-customized quiz first
+        saved = chapter_teacher_quizzes_collection.find_one(
+            {
+                'std': std,
+                'subjectName': re.compile(f'^{re.escape(subject)}$', re.I),
+                'chapterName': re.compile(f'^{re.escape(chapter)}$', re.I),
+            },
+            {'_id': 0, 'questions': 1, 'updatedBy': 1}
+        )
+        if saved and saved.get('questions'):
+            return jsonify({"questions": saved['questions'], "updatedBy": saved.get('updatedBy')}), 200
+
+        # Fallback: auto-generate 3 MCQs
         subject_filter = re.compile(f'^{re.escape(subject)}$', re.I)
         curriculum = curriculum_collection.find_one(
             {'std': std, 'subjectName': subject_filter},
@@ -1393,6 +1407,63 @@ def get_chapter_quiz():
             },
         ]
         return jsonify({"questions": questions}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/chapter/quiz', methods=['PUT'])
+@token_required
+def save_chapter_quiz(current_user):
+    """Teacher-only: save custom quiz questions for a chapter."""
+    if current_user.get('role') != 'teacher':
+        return jsonify({"error": "Only teachers can edit chapter quizzes"}), 403
+    body = request.get_json() or {}
+    std = body.get('std')
+    subject_name = (body.get('subjectName') or '').strip()
+    chapter_name = ' '.join((body.get('chapterName') or '').split())
+    questions = body.get('questions') or []
+    if not all([std, subject_name, chapter_name]):
+        return jsonify({"error": "std, subjectName, chapterName are required"}), 400
+    if not questions or not isinstance(questions, list):
+        return jsonify({"error": "questions must be a non-empty array"}), 400
+    try:
+        norm_q = []
+        for q in questions:
+            qt = (q.get('q') or '').strip()
+            opts = [str(o).strip() for o in (q.get('options') or []) if str(o).strip()]
+            if len(opts) < 2 or not qt:
+                continue
+            try:
+                ci = int(q.get('correct', 0))
+            except (TypeError, ValueError):
+                ci = 0
+            ci = max(0, min(ci, len(opts) - 1))
+            item = {'q': qt, 'options': opts, 'correct': ci}
+            if q.get('image'):
+                item['image'] = q['image'].strip()
+            norm_q.append(item)
+        if not norm_q:
+            return jsonify({"error": "At least one valid question with 2+ options required"}), 400
+        teacher_name = current_user.get('name') or current_user.get('email')
+        chapter_teacher_quizzes_collection.update_one(
+            {
+                'std': std,
+                'subjectName': re.compile(f'^{re.escape(subject_name)}$', re.I),
+                'chapterName': re.compile(f'^{re.escape(chapter_name)}$', re.I),
+            },
+            {
+                '$set': {
+                    'std': std,
+                    'subjectName': subject_name,
+                    'chapterName': chapter_name,
+                    'questions': norm_q,
+                    'updatedBy': teacher_name,
+                    'updatedAt': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                }
+            },
+            upsert=True,
+        )
+        return jsonify({"status": "saved", "questions": norm_q, "updatedBy": teacher_name}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
