@@ -65,10 +65,10 @@ function ConceptMapPage() {
   });
 
   const progressQ = useQuery({
-    queryKey: ["progress"],
+    queryKey: ["chapter-progress"],
     queryFn: async () => {
       const token = localStorage.getItem("token");
-      const res = await fetch(apiPath("/api/progress"), {
+      const res = await fetch(apiPath("/api/chapter/progress"), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await parseApiJson<any[]>(res);

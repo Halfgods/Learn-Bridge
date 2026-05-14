@@ -1,9 +1,10 @@
 import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
-import { ArrowLeft, FileText, Download, Highlighter, NotebookPen, Youtube, ExternalLink, Sparkles, Clock, TrendingUp, AlertTriangle, Loader2, X, ThumbsUp, ThumbsDown, CheckCircle2, BookOpen } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { ArrowLeft, FileText, Download, Highlighter, NotebookPen, Youtube, ExternalLink, Sparkles, Clock, TrendingUp, AlertTriangle, Loader2, X, ThumbsUp, ThumbsDown, CheckCircle2, BookOpen, Brain, ArrowRight, CircleCheckBig } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { apiPath, scrapperPath, parseApiJson } from "@/lib/api";
+import { ClayButton } from "@/components/ClayButton";
 
 export const Route = createFileRoute("/app/chapter/$chapterId")({
   head: () => ({ meta: [{ title: "Chapter — Nova Learn" }] }),
@@ -22,6 +23,12 @@ function Chapter() {
   const title = decodeURIComponent(chapterId);
   
   const [selectedResource, setSelectedResource] = useState<'shaalaa' | 'yt' | null>(null);
+  const [quizIdx, setQuizIdx] = useState(0);
+  const [quizPicked, setQuizPicked] = useState<number | null>(null);
+  const [quizAnswers, setQuizAnswers] = useState<number[]>([]);
+  const [quizDone, setQuizDone] = useState(false);
+  const [quizResult, setQuizResult] = useState<{ score: number; total: number } | null>(null);
+  const queryClient = useQueryClient();
 
   const { data: resourceData, isLoading: isResourceLoading } = useQuery({
     queryKey: ['scrapped-resources', selectedResource, std, title],
@@ -55,6 +62,50 @@ function Chapter() {
       const proxyUrl = apiPath(`/api/content/pdf/proxy?url=${encodeURIComponent(json.ncertUrl)}`);
       return { ...json, proxyUrl };
     }
+  });
+
+  const chapterQuizQ = useQuery({
+    queryKey: ["chapter-quiz", std, subjectName, title],
+    queryFn: async () => {
+      const res = await fetch(apiPath(`/api/chapter/quiz?std=${std}&subject=${encodeURIComponent(subjectName)}&chapter=${encodeURIComponent(title)}`));
+      const data = await parseApiJson<{ questions?: { q: string; options: string[]; correct: number }[] }>(res);
+      return data.questions ?? [];
+    },
+    enabled: !quizDone,
+  });
+
+  const chapterProgressQ = useQuery({
+    queryKey: ["chapter-progress"],
+    queryFn: async () => {
+      const token = localStorage.getItem("token");
+      if (!token) return [];
+      const res = await fetch(apiPath("/api/chapter/progress"), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await parseApiJson<any[]>(res);
+      return Array.isArray(data) ? data : [];
+    },
+  });
+
+  const chapterMut = useMutation({
+    mutationFn: async (payload: { std: number; subject: string; chapter: string; score: number; total: number; answers: number[] }) => {
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("Login required");
+      const res = await fetch(apiPath("/api/chapter/attempt"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload),
+      });
+      const body = await parseApiJson<{ saved: boolean; score: number; total: number }>(res);
+      if (!res.ok) throw new Error("Failed");
+      return body;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["chapter-progress"] });
+      queryClient.invalidateQueries({ queryKey: ["chapter-quiz"] });
+      setQuizResult({ score: data.score, total: data.total });
+      setQuizDone(true);
+    },
   });
 
   // PDF feedback state: 'idle' | 'confirming' | 'confirmed' | 'rejecting' | 'rejected'
@@ -215,16 +266,32 @@ function Chapter() {
             </button>
           ))}
         </div>
-        <div className="clay-lg gradient-primary text-white p-6 space-y-4 relative overflow-hidden">
-          <div className="absolute -bottom-12 -right-12 w-48 h-48 rounded-full bg-white/20 blur-2xl"/>
-          <h3 className="font-extrabold relative">Learning insights</h3>
-          <div className="grid grid-cols-2 gap-3 relative">
-            <Insight icon={Clock} label="Time spent" value="42 min"/>
-            <Insight icon={TrendingUp} label="Mastery" value="78%"/>
-            <Insight icon={AlertTriangle} label="Weak topic" value="Word problems"/>
-            <Insight icon={Sparkles} label="Streak" value="4 days"/>
-          </div>
-        </div>
+        <ChapterQuiz
+          questions={chapterQuizQ.data ?? []}
+          isLoading={chapterQuizQ.isLoading}
+          idx={quizIdx}
+          picked={quizPicked}
+          setPicked={setQuizPicked}
+          onNext={() => {
+            if (quizPicked === null) return;
+            const next = [...quizAnswers, quizPicked];
+            setQuizAnswers(next);
+            setQuizPicked(null);
+            const qs = chapterQuizQ.data ?? [];
+            if (quizIdx < qs.length - 1) {
+              setQuizIdx(quizIdx + 1);
+            } else {
+              chapterMut.mutate({ std, subject: subjectName, chapter: title, score: next.filter((a, i) => a === qs[i].correct).length, total: qs.length, answers: next });
+            }
+          }}
+          isSubmitting={chapterMut.isPending}
+          done={quizDone}
+          result={quizResult}
+          onRetry={() => { setQuizDone(false); setQuizIdx(0); setQuizPicked(null); setQuizAnswers([]); setQuizResult(null); }}
+        />
+      </section>
+      <section>
+        <ChapterInsights chapterProgress={chapterProgressQ.data ?? []} chapterName={title} subjectName={subjectName} />
       </section>
 
       {/* Zoom-in Modal for Resources */}
@@ -295,6 +362,106 @@ function Insight({ icon: Icon, label, value }: { icon: any; label: string; value
       <Icon className="w-4 h-4 mb-2 opacity-90"/>
       <div className="text-xs opacity-90 font-bold">{label}</div>
       <div className="font-black">{value}</div>
+    </div>
+  );
+}
+
+function ChapterQuiz({ questions, isLoading, idx, picked, setPicked, onNext, isSubmitting, done, result, onRetry }: {
+  questions: { q: string; options: string[]; correct: number }[];
+  isLoading: boolean;
+  idx: number;
+  picked: number | null;
+  setPicked: (v: number | null) => void;
+  onNext: () => void;
+  isSubmitting: boolean;
+  done: boolean;
+  result: { score: number; total: number } | null;
+  onRetry: () => void;
+}) {
+  if (isLoading) {
+    return (
+      <div className="clay-lg bg-card p-6 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+  if (questions.length === 0) return null;
+
+  if (done && result) {
+    const pct = Math.round((result.score / result.total) * 100);
+    return (
+      <div className="clay-lg bg-card p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <CircleCheckBig className="w-8 h-8 text-green-500" />
+          <div>
+            <h3 className="font-extrabold text-lg">Chapter Quiz Complete</h3>
+            <p className="text-sm text-muted-foreground font-bold">
+              {result.score}/{result.total} correct ({pct}%)
+            </p>
+          </div>
+        </div>
+        <div className="h-4 rounded-full clay-pressed bg-muted w-full">
+          <div className={cn("h-full rounded-full transition-all", pct >= 70 ? "bg-green-400" : pct >= 40 ? "gradient-yellow" : "bg-rose-400")} style={{ width: `${pct}%` }} />
+        </div>
+        <ClayButton variant="white" size="sm" onClick={onRetry}>
+          Retry quiz
+        </ClayButton>
+      </div>
+    );
+  }
+
+  const cur = questions[idx];
+  if (!cur) return null;
+  const progress = (idx / questions.length) * 100;
+
+  return (
+    <div className="clay-lg bg-card p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-extrabold flex items-center gap-2"><Brain className="w-4 h-4 text-primary" /> Chapter Quiz</h3>
+        <span className="text-xs font-bold text-muted-foreground">{idx + 1}/{questions.length}</span>
+      </div>
+      <div className="h-2 rounded-full clay-pressed bg-muted w-full">
+        <div className="h-full rounded-full gradient-primary transition-all" style={{ width: `${progress}%` }} />
+      </div>
+      <p className="font-extrabold text-lg leading-snug">{cur.q}</p>
+      <div className="grid sm:grid-cols-2 gap-2">
+        {cur.options.map((opt, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => setPicked(i)}
+            className={cn(
+              "min-h-12 rounded-2xl font-bold text-left px-4 py-3 transition-all text-sm",
+              picked === i ? "gradient-primary text-white glow-purple scale-[1.02]" : "clay-sm bg-card hover:-translate-y-0.5",
+            )}
+          >
+            <span className="opacity-70 mr-2">{String.fromCharCode(65 + i)}.</span> {opt}
+          </button>
+        ))}
+      </div>
+      <ClayButton size="sm" className="w-full" disabled={picked === null || isSubmitting} onClick={onNext}>
+        {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : idx < questions.length - 1 ? <>Next <ArrowRight className="w-4 h-4" /></> : "Submit"}
+      </ClayButton>
+    </div>
+  );
+}
+
+function ChapterInsights({ chapterProgress, chapterName, subjectName }: { chapterProgress: any[]; chapterName: string; subjectName: string }) {
+  const myAttempt = chapterProgress.find((p: any) => p.chapterName === chapterName && p.subjectName === subjectName);
+  const totalChapters = new Set(chapterProgress.map((p: any) => p.chapterName)).size;
+  const mastery = myAttempt ? Math.round((myAttempt.quizScore / myAttempt.totalQuestions) * 100) : 0;
+  const completed = chapterProgress.filter((p: any) => p.isCompleted).length;
+
+  return (
+    <div className="clay-lg gradient-primary text-white p-6 space-y-4 relative overflow-hidden">
+      <div className="absolute -bottom-12 -right-12 w-48 h-48 rounded-full bg-white/20 blur-2xl"/>
+      <h3 className="font-extrabold relative">Learning insights</h3>
+      <div className="grid grid-cols-2 gap-3 relative">
+        <Insight icon={Clock} label="Chapters done" value={`${completed}`} />
+        <Insight icon={TrendingUp} label="Mastery" value={myAttempt ? `${mastery}%` : "—"} />
+        <Insight icon={AlertTriangle} label="This chapter" value={myAttempt ? `${mastery}%` : "Not attempted"} />
+        <Insight icon={Sparkles} label="Attempts" value={`${chapterProgress.length}`} />
+      </div>
     </div>
   );
 }

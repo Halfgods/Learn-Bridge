@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { Calendar, Plus, Trash2, CheckCircle2, Circle, CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ClayButton } from "@/components/ClayButton";
-import { format, isPast, parseISO, startOfWeek, addDays } from "date-fns";
+import { format, isPast, isValid, parseISO, startOfWeek, addDays } from "date-fns";
 
 export const Route = createFileRoute("/app/planner")({
   head: () => ({ meta: [{ title: "Planner — Nova Learn" }] }),
@@ -50,6 +50,12 @@ function PlannerPage() {
     setTasks((prev) => prev.filter((t) => t.id !== id));
   };
 
+  const updateTaskDate = (id: string, date: string) => {
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, date } : t)));
+  };
+
+  const [editingDate, setEditingDate] = useState<string | null>(null);
+
   const today = new Date();
   const weekStart = startOfWeek(today, { weekStartsOn: 1 });
   const weekDays = Array.from({ length: 7 }, (_, i) => {
@@ -61,7 +67,7 @@ function PlannerPage() {
     [...new Set(tasks.map((t) => t.date))].sort().map((d) => [d, tasks.filter((t) => t.date === d)])
   );
 
-  const allDates = [...new Set([...weekDays.map((d) => d.date), ...Object.keys(tasksByDate)])].sort();
+  const allDates = [...new Set([...weekDays.map((d) => d.date), ...Object.keys(tasksByDate)])].sort().filter((d) => isValid(parseISO(d)));
 
   return (
     <div className="p-6 lg:p-10 max-w-3xl mx-auto space-y-6">
@@ -128,7 +134,7 @@ function PlannerPage() {
                 <div
                   key={task.id}
                   className={cn(
-                    "flex items-center gap-3 clay-sm p-3 rounded-2xl transition-all group",
+                    "flex items-center gap-2 clay-sm p-3 rounded-2xl transition-all group",
                     task.done && "opacity-50",
                   )}
                 >
@@ -138,12 +144,35 @@ function PlannerPage() {
                   <span className={cn("flex-1 font-bold text-sm", task.done && "line-through text-muted-foreground")}>
                     {task.text}
                   </span>
-                  <button
-                    onClick={() => deleteTask(task.id)}
-                    className="shrink-0 p-1 rounded-lg text-muted-foreground/40 hover:text-destructive opacity-0 group-hover:opacity-100 transition-all"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {editingDate === task.id ? (
+                      <input
+                        type="date"
+                        value={task.date}
+                        onChange={(e) => {
+                          updateTaskDate(task.id, e.target.value);
+                          setEditingDate(null);
+                        }}
+                        onBlur={() => setEditingDate(null)}
+                        className="w-32 h-7 rounded-lg border border-muted bg-background px-2 text-xs font-bold [color-scheme:dark] dark:[color-scheme:dark]"
+                        autoFocus
+                      />
+                    ) : (
+                      <button
+                        onClick={() => setEditingDate(task.id)}
+                        className="flex items-center gap-1 text-xs font-bold text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted/50 transition-all"
+                      >
+                        <CalendarDays className="w-3 h-3" />
+                        {format(parseISO(task.date), "MMM d")}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => deleteTask(task.id)}
+                      className="shrink-0 p-1 rounded-lg text-muted-foreground/40 hover:text-destructive opacity-0 group-hover:opacity-100 transition-all"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

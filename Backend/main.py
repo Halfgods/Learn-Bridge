@@ -69,6 +69,7 @@ pdfs_collection = db['ncertpdfs']
 quizzes_collection = db['quizzes']
 teacher_quizzes_collection = db["teacher_quizzes"]
 quiz_attempts_collection = db["quiz_attempts"]
+chapter_attempts_collection = db["chapter_attempts"]
 
 TEACHER_ACCESS_CODE = (os.environ.get("TEACHER_ACCESS_CODE") or "NOVA-TEACHER").strip()
 
@@ -1047,10 +1048,6 @@ def kg_gaps(current_user):
         quiz_ids = [a["quizId"] for a in attempts if "quizId" in a]
         quiz_map = {}
         if quiz_ids:
-            teacher_quizzes_collection.find(
-                {"quizId": {"$in": quiz_ids}},
-                {"_id": 0, "quizId": 1, "subject": 1}
-            )
             for q in teacher_quizzes_collection.find(
                 {"quizId": {"$in": quiz_ids}},
                 {"_id": 0, "quizId": 1, "subject": 1}
@@ -1067,6 +1064,16 @@ def kg_gaps(current_user):
                 ch_name = ch.get("chapterName", "")
                 if ch_name not in chapter_scores or pct > chapter_scores[ch_name]:
                     chapter_scores[ch_name] = pct
+
+        chapter_attempts = list(chapter_attempts_collection.find(
+            {"studentEmail": current_user["email"], "subject": subject},
+            {"_id": 0, "chapter": 1, "score": 1, "total": 1}
+        ))
+        for att in chapter_attempts:
+            ch_name = att.get("chapter", "")
+            pct = (att.get("score") or 0) / max(att.get("total") or 1, 1) * 100
+            if ch_name not in chapter_scores or pct > chapter_scores[ch_name]:
+                chapter_scores[ch_name] = pct
 
         mastered = 0
         weak_chapters = []
@@ -1110,51 +1117,128 @@ def kg_gaps(current_user):
 
 
 # ==========================================
-# PROGRESS ROUTES
+# CHAPTER QUIZ ROUTES
 # ==========================================
-@app.route('/api/progress', methods=['GET'])
-@token_required
-def get_student_progress(current_user):
-    """Return quiz progress per chapter for the current student."""
-    if current_user.get("role") != "student":
-        return jsonify([]), 200
+@app.route('/api/chapter/quiz', methods=['GET'])
+def get_chapter_quiz():
+    """Auto-generate 3 MCQs for a chapter based on its name and subject."""
+    std = request.args.get('std', type=int)
+    subject = request.args.get('subject')
+    chapter = request.args.get('chapter')
+    if not std or not subject or not chapter:
+        return jsonify({"error": "std, subject, chapter are required"}), 400
     try:
-        grade = current_user.get("grade")
-        board = _norm_board(current_user.get("board"))
-        if grade is None:
-            return jsonify([]), 200
+        subject_filter = re.compile(f'^{re.escape(subject)}$', re.I)
+        curriculum = curriculum_collection.find_one(
+            {'std': std, 'subjectName': subject_filter},
+            {'_id': 0, 'chapters': 1}
+        )
+        if not curriculum or not curriculum.get('chapters'):
+            return jsonify({"questions": []}), 200
 
-        attempts = list(quiz_attempts_collection.find(
+        all_ch_names = [ch.get('chapterName', '') for ch in curriculum['chapters'] if ch.get('chapterName')]
+        related = [n for n in all_ch_names if n.lower().strip() != chapter.lower().strip()]
+        import random; random.shuffle(related)
+        distractors = related[:3]
+
+        all_subjects = curriculum_collection.distinct('subjectName', {'std': std})
+
+        chapter_words = list(dict.fromkeys(
+            w for w in re.findall(r'[A-Za-z]+', chapter) if len(w) > 2
+        )) or [chapter]
+
+        questions = [
+            {
+                "q": f"What is the main topic of \"{chapter}\"?",
+                "options": [chapter] + distractors[:2] if len(distractors) >= 2 else [chapter, "General Knowledge", "Basic Concepts"],
+                "correct": 0,
+            },
+            {
+                "q": f"Which subject does \"{chapter}\" belong to?",
+                "options": ([subject] + [s for s in all_subjects if s.lower() != subject.lower()])[:4],
+                "correct": 0,
+            },
+            {
+                "q": f"What concept is explored in \"{chapter}\"?",
+                "options": chapter_words + ["General Knowledge", "Basic Math", "Fundamentals"],
+                "correct": 0,
+            },
+        ]
+        return jsonify({"questions": questions}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/chapter/attempt', methods=['POST'])
+@token_required
+def submit_chapter_attempt(current_user):
+    """Save a chapter quiz attempt."""
+    body = request.get_json() or {}
+    std = body.get('std')
+    subject = body.get('subject')
+    chapter = body.get('chapter')
+    score = body.get('score')
+    total = body.get('total')
+    answers = body.get('answers', [])
+
+    if not all([std, subject, chapter, score is not None, total is not None]):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    try:
+        existing = chapter_attempts_collection.find_one({
+            "studentEmail": current_user["email"],
+            "subject": subject,
+            "chapter": chapter,
+            "std": int(std),
+        })
+        if existing:
+            if (existing.get("score") or 0) >= int(score):
+                return jsonify({
+                    "saved": True,
+                    "alreadyCompleted": True,
+                    "score": existing["score"],
+                    "total": existing["total"],
+                }), 200
+            chapter_attempts_collection.update_one(
+                {"_id": existing["_id"]},
+                {"$set": {"score": int(score), "total": int(total), "answers": answers, "submittedAt": datetime.datetime.utcnow()}}
+            )
+        else:
+            chapter_attempts_collection.insert_one({
+                "studentEmail": current_user["email"],
+                "studentName": current_user.get("name", ""),
+                "std": int(std),
+                "subject": subject,
+                "chapter": chapter,
+                "score": int(score),
+                "total": int(total),
+                "answers": answers,
+                "submittedAt": datetime.datetime.utcnow(),
+            })
+        return jsonify({"saved": True, "score": int(score), "total": int(total)}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/chapter/progress', methods=['GET'])
+@token_required
+def get_chapter_progress(current_user):
+    """Return per-chapter quiz progress for the current student (used by concept map)."""
+    try:
+        attempts = list(chapter_attempts_collection.find(
             {"studentEmail": current_user["email"]},
-            {"_id": 0, "quizId": 1, "score": 1, "total": 1}
+            {"_id": 0, "subject": 1, "chapter": 1, "score": 1, "total": 1}
         ))
-        quiz_ids = [a["quizId"] for a in attempts if "quizId" in a]
-        if not quiz_ids:
-            return jsonify([]), 200
-
-        quiz_info = {}
-        for q in teacher_quizzes_collection.find(
-            {"quizId": {"$in": quiz_ids}},
-            {"_id": 0, "quizId": 1, "subject": 1, "title": 1}
-        ):
-            quiz_info[q["quizId"]] = {
-                "subject": q.get("subject", ""),
-                "title": q.get("title", q["quizId"]),
-            }
-
         result = []
         for att in attempts:
-            qid = att.get("quizId")
-            info = quiz_info.get(qid, {"subject": "General", "title": qid})
+            pct = round((att.get("score") or 0) / max(att.get("total") or 1, 1) * 100)
             result.append({
-                "chapterName": info["title"],
-                "subjectName": info["subject"],
+                "chapterName": att.get("chapter", ""),
+                "subjectName": att.get("subject", ""),
                 "quizScore": att.get("score", 0),
                 "totalQuestions": att.get("total", 0),
                 "isCompleted": True,
             })
-
-        result.sort(key=lambda r: r["subjectName"])
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500

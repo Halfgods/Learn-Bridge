@@ -18,7 +18,6 @@ import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppSubjectsRouteImport } from './routes/app.subjects'
 import { Route as AppSettingsRouteImport } from './routes/app.settings'
 import { Route as AppQuizzesRouteImport } from './routes/app.quizzes'
-import { Route as AppProgressRouteImport } from './routes/app.progress'
 import { Route as AppPlannerRouteImport } from './routes/app.planner'
 import { Route as AppLeaderboardRouteImport } from './routes/app.leaderboard'
 import { Route as AppConceptMapRouteImport } from './routes/app.concept-map'
@@ -72,11 +71,6 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
 const AppQuizzesRoute = AppQuizzesRouteImport.update({
   id: '/quizzes',
   path: '/quizzes',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppProgressRoute = AppProgressRouteImport.update({
-  id: '/progress',
-  path: '/progress',
   getParentRoute: () => AppRoute,
 } as any)
 const AppPlannerRoute = AppPlannerRouteImport.update({
@@ -134,7 +128,6 @@ export interface FileRoutesByFullPath {
   '/app/concept-map': typeof AppConceptMapRoute
   '/app/leaderboard': typeof AppLeaderboardRoute
   '/app/planner': typeof AppPlannerRoute
-  '/app/progress': typeof AppProgressRoute
   '/app/quizzes': typeof AppQuizzesRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
   '/app/subjects': typeof AppSubjectsRoute
@@ -154,7 +147,6 @@ export interface FileRoutesByTo {
   '/app/concept-map': typeof AppConceptMapRoute
   '/app/leaderboard': typeof AppLeaderboardRoute
   '/app/planner': typeof AppPlannerRoute
-  '/app/progress': typeof AppProgressRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/subjects': typeof AppSubjectsRoute
   '/app': typeof AppIndexRoute
@@ -175,7 +167,6 @@ export interface FileRoutesById {
   '/app/concept-map': typeof AppConceptMapRoute
   '/app/leaderboard': typeof AppLeaderboardRoute
   '/app/planner': typeof AppPlannerRoute
-  '/app/progress': typeof AppProgressRoute
   '/app/quizzes': typeof AppQuizzesRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
   '/app/subjects': typeof AppSubjectsRoute
@@ -198,7 +189,6 @@ export interface FileRouteTypes {
     | '/app/concept-map'
     | '/app/leaderboard'
     | '/app/planner'
-    | '/app/progress'
     | '/app/quizzes'
     | '/app/settings'
     | '/app/subjects'
@@ -218,7 +208,6 @@ export interface FileRouteTypes {
     | '/app/concept-map'
     | '/app/leaderboard'
     | '/app/planner'
-    | '/app/progress'
     | '/app/settings'
     | '/app/subjects'
     | '/app'
@@ -238,7 +227,6 @@ export interface FileRouteTypes {
     | '/app/concept-map'
     | '/app/leaderboard'
     | '/app/planner'
-    | '/app/progress'
     | '/app/quizzes'
     | '/app/settings'
     | '/app/subjects'
@@ -322,13 +310,6 @@ declare module '@tanstack/react-router' {
       path: '/quizzes'
       fullPath: '/app/quizzes'
       preLoaderRoute: typeof AppQuizzesRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/progress': {
-      id: '/app/progress'
-      path: '/progress'
-      fullPath: '/app/progress'
-      preLoaderRoute: typeof AppProgressRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/planner': {
@@ -428,7 +409,6 @@ interface AppRouteChildren {
   AppConceptMapRoute: typeof AppConceptMapRoute
   AppLeaderboardRoute: typeof AppLeaderboardRoute
   AppPlannerRoute: typeof AppPlannerRoute
-  AppProgressRoute: typeof AppProgressRoute
   AppQuizzesRoute: typeof AppQuizzesRouteWithChildren
   AppSettingsRoute: typeof AppSettingsRoute
   AppSubjectsRoute: typeof AppSubjectsRoute
@@ -441,7 +421,6 @@ const AppRouteChildren: AppRouteChildren = {
   AppConceptMapRoute: AppConceptMapRoute,
   AppLeaderboardRoute: AppLeaderboardRoute,
   AppPlannerRoute: AppPlannerRoute,
-  AppProgressRoute: AppProgressRoute,
   AppQuizzesRoute: AppQuizzesRouteWithChildren,
   AppSettingsRoute: AppSettingsRoute,
   AppSubjectsRoute: AppSubjectsRoute,
