@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useSearch, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   ArrowLeft,
   FileText,
@@ -20,6 +20,7 @@ import {
   CircleCheckBig,
   Pen,
   Save,
+  Plus,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
@@ -45,7 +46,7 @@ function Chapter() {
   const title = decodeURIComponent(chapterId);
   const navigate = useNavigate();
 
-  const [selectedResource, setSelectedResource] = useState<"shaalaa" | "yt" | null>(null);
+  const [selectedResource, setSelectedResource] = useState<"shaalaa" | "yt" | "pdf" | null>(null);
   const [quizIdx, setQuizIdx] = useState(0);
   const [quizPicked, setQuizPicked] = useState<number | null>(null);
   const [quizAnswers, setQuizAnswers] = useState<number[]>([]);
@@ -172,6 +173,67 @@ function Chapter() {
       queryClient.invalidateQueries({ queryKey: ["pdf", std, subjectName, title] });
     },
   });
+
+  const chapterPdfsQ = useQuery({
+    queryKey: ["chapter-pdfs", std, subjectName, title],
+    queryFn: async () => {
+      const params = new URLSearchParams({ std: String(std), subjectName, chapterName: title });
+      const res = await fetch(apiPath(`/api/content/chapter-pdfs?${params}`));
+      type PdfDoc = { pdfUrl: string; label: string; uploadedBy: string; createdAt: string };
+      const body = await parseApiJson<{ pdfs?: PdfDoc[] }>(res);
+      if (!res.ok) throw new Error("Failed");
+      return body.pdfs ?? [];
+    },
+  });
+
+  const addPdfMut = useMutation({
+    mutationFn: async (file: File) => {
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("Login required");
+      const b64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(",")[1]);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch(apiPath("/api/content/chapter-pdfs"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          std,
+          subjectName,
+          chapterName: title,
+          file: b64,
+          label: file.name.replace(/\.pdf$/i, ""),
+        }),
+      });
+      const body = await parseApiJson<{ status: string; pdf?: any; error?: string }>(res);
+      if (!res.ok) throw new Error(body.error || "Failed");
+      return body;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["chapter-pdfs", std, subjectName, title] }),
+  });
+
+  const deletePdfMut = useMutation({
+    mutationFn: async (pdfUrl: string) => {
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("Login required");
+      const res = await fetch(apiPath("/api/content/chapter-pdfs"), {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ std, subjectName, chapterName: title, pdfUrl }),
+      });
+      const body = await parseApiJson<{ status: string; error?: string }>(res);
+      if (!res.ok) throw new Error(body.error || "Failed");
+      return body;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["chapter-pdfs", std, subjectName, title] }),
+  });
+
+  const pdfFileRef = useRef<HTMLInputElement>(null);
 
   const activePdfUrl = data?.proxyUrl ?? null;
 
@@ -326,11 +388,11 @@ function Chapter() {
               disabled: false,
             },
             {
-              id: "worksheet",
+              id: "pdf",
               icon: FileText,
-              label: "Practice worksheet (PDF)",
+              label: "PDF Links",
               color: "gradient-mint text-emerald-900",
-              disabled: true,
+              disabled: false,
             },
           ].map((r) => (
             <button
@@ -400,7 +462,85 @@ function Chapter() {
       </section>
 
       {/* Zoom-in Modal for Resources */}
-      {selectedResource && (
+      {selectedResource === "pdf" ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={() => setSelectedResource(null)}
+          />
+          <div className="relative w-full max-w-lg clay-lg bg-card p-6 z-10 space-y-4 animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <FileText className="w-5 h-5 text-emerald-500" /> PDF Links
+              </h2>
+              <button
+                onClick={() => setSelectedResource(null)}
+                className="p-2 rounded-full bg-muted/50 hover:bg-muted transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {isTeacher && (
+              <div className="p-3 clay-sm bg-muted/30 rounded-xl">
+                <input
+                  ref={pdfFileRef}
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) addPdfMut.mutate(file);
+                    e.target.value = "";
+                  }}
+                  className="w-full text-xs font-bold file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-primary file:text-white hover:file:scale-105 file:transition-transform file:cursor-pointer cursor-pointer"
+                />
+              </div>
+            )}
+
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
+              {chapterPdfsQ.isLoading ? (
+                <div className="flex justify-center py-12">
+                  <Loader2 className="w-10 h-10 animate-spin text-primary" />
+                </div>
+              ) : (
+                <>
+                  {chapterPdfsQ.data?.map((pdf, idx) => (
+                    <div key={idx} className="flex items-center gap-3 clay-sm bg-muted/50 rounded-xl p-3">
+                      <a
+                        href={apiPath(pdf.pdfUrl)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-1 min-w-0"
+                      >
+                        <p className="font-bold text-sm truncate text-primary hover:underline">
+                          {pdf.label}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Added by <span className="font-bold">{pdf.uploadedBy}</span>
+                        </p>
+                      </a>
+                      {isTeacher && (
+                        <button
+                          onClick={() => deletePdfMut.mutate(pdf.pdfUrl)}
+                          disabled={deletePdfMut.isPending}
+                          className="p-2 rounded-xl hover:bg-destructive/10 text-destructive transition-colors shrink-0"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {!chapterPdfsQ.isLoading && (!chapterPdfsQ.data || chapterPdfsQ.data.length === 0) && (
+                    <p className="text-muted-foreground text-center py-8 font-medium">
+                      No PDFs uploaded for this chapter.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : selectedResource ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
@@ -529,7 +669,7 @@ function Chapter() {
             )}
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

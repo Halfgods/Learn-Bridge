@@ -149,9 +149,6 @@ function SubjectExplorer() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <button className="h-12 px-4 rounded-2xl clay-sm bg-card font-bold text-sm flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-primary" /> AI suggested
-        </button>
       </div>
 
       {/* Tree */}

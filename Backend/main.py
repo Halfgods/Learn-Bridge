@@ -1,10 +1,11 @@
-from flask import Flask, jsonify, request, make_response, Response
+from flask import Flask, jsonify, request, make_response, Response, send_from_directory
 from flask_cors import CORS
 from pymongo import MongoClient
 from pymongo.errors import ConfigurationError
 import os
 import re
 import datetime
+import traceback
 from functools import wraps
 import jwt
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -47,6 +48,13 @@ CORS(
         }
     },
 )
+# Global 500 error handler — ensures JSON even for unhandled exceptions
+@app.errorhandler(500)
+def internal_error(e):
+    tb = traceback.format_exc()
+    print("!!! 500 ERROR:", tb)
+    return jsonify({"error": f"Internal server error", "detail": str(e)}), 500
+
 # Configuration
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY") or os.environ.get(
     "JWT_SECRET", "dev-secret-key-change-in-prod"
@@ -698,26 +706,47 @@ def get_chapter_pdfs():
         return jsonify({"error": str(e)}), 500
 
 
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads', 'pdfs')
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+
+@app.route('/api/uploads/pdfs/<filename>')
+def serve_chapter_pdf(filename):
+    return send_from_directory(UPLOAD_DIR, filename)
+
+
 @app.route('/api/content/chapter-pdfs', methods=['POST'])
 @token_required
 def add_chapter_pdf(current_user):
     if current_user.get('role') != 'teacher':
         return jsonify({"error": "Only teachers can upload PDFs"}), 403
-    body = request.get_json(force=True) or {}
-    std = body.get('std')
+    try:
+        body = request.get_json(force=True) or {}
+    except Exception:
+        return jsonify({"error": "Invalid JSON body"}), 400
+    std = body.get('std', type=int)
     subject_name = (body.get('subjectName') or '').strip()
     chapter_name = ' '.join((body.get('chapterName') or '').split())
-    pdf_url = (body.get('pdfUrl') or '').strip()
-    label = (body.get('label') or '').strip() or pdf_url
-    if not all([std, subject_name, chapter_name, pdf_url]):
-        return jsonify({"error": "Missing fields: std, subjectName, chapterName, pdfUrl"}), 400
+    file_b64 = (body.get('file') or '').strip()
+    label = (body.get('label') or '').strip() or 'Untitled PDF'
+    if not all([std is not None, subject_name, chapter_name, file_b64]):
+        return jsonify({"error": "Missing fields: std, subjectName, chapterName, file (base64)"}), 400
     try:
+        import base64
+        raw = base64.b64decode(file_b64)
+        ext = '.pdf'
+        unique_name = f"{uuid.uuid4().hex}{ext}"
+        file_path = os.path.join(UPLOAD_DIR, unique_name)
+        with open(file_path, 'wb') as f:
+            f.write(raw)
         teacher_name = current_user.get('name') or current_user.get('email')
+        pdf_url = f"/api/uploads/pdfs/{unique_name}"
         doc = {
             'std': std,
             'subjectName': subject_name,
             'chapterName': chapter_name,
             'pdfUrl': pdf_url,
+            'filename': unique_name,
             'label': label,
             'uploadedBy': teacher_name,
             'createdAt': datetime.datetime.utcnow().isoformat(),
@@ -741,6 +770,16 @@ def delete_chapter_pdf(current_user):
     if not all([std, subject_name, chapter_name, pdf_url]):
         return jsonify({"error": "Missing fields"}), 400
     try:
+        doc = chapter_pdfs_collection.find_one({
+            'std': std,
+            'subjectName': re.compile(f'^{re.escape(subject_name)}$', re.I),
+            'chapterName': re.compile(f'^{re.escape(chapter_name)}$', re.I),
+            'pdfUrl': pdf_url,
+        })
+        if doc and doc.get('filename'):
+            file_path = os.path.join(UPLOAD_DIR, doc['filename'])
+            if os.path.exists(file_path):
+                os.remove(file_path)
         chapter_pdfs_collection.delete_one({
             'std': std,
             'subjectName': re.compile(f'^{re.escape(subject_name)}$', re.I),
