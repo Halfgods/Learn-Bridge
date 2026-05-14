@@ -72,8 +72,7 @@ MAX_TRANSCRIPT_CHARS = _env_int("TUTOR_MAX_TRANSCRIPT_CHARS", 14_000, lo=2000, h
 # session_id -> list of {"role": "user"|"assistant", "content": str}
 _sessions: dict[str, list[dict]] = defaultdict(list)
 
-# Shorter than the original long-form rubric: every token here is re-sent on each Ollama call.
-SYSTEM_PROMPT = """
+BASE_SYSTEM_PROMPT = """
 You are Sam — a warm teacher and cool older friend for kids aged 8–12.
 Never show raw chain-of-thought or "thinking" labels; speak clearly to the student.
 
@@ -82,6 +81,38 @@ Teach in one flowing conversation: start from what they likely know, unpack idea
 it fits, mention one common mix-up if useful, and end with 1–3 quick check questions.
 Depth beats coverage; the explanation should be the longest part.
 """
+
+def build_system_prompt(subject: str | None = None, chapter: str | None = None) -> str:
+    """Build a system prompt pinned to a specific subject/chapter so the model never guesses."""
+    prompt = BASE_SYSTEM_PROMPT.strip()
+    if subject:
+        ctx = f"\n\nCURRENT SUBJECT: {subject}"
+        if chapter:
+            ctx += f"\nCURRENT CHAPTER: {chapter}"
+        ctx += (
+            "\nYou MUST only answer questions related to this subject and chapter. "
+            "If the student asks about something unrelated, gently redirect them back."
+        )
+        prompt += ctx
+    return prompt
+
+
+def parse_subject_context(query: str) -> tuple[str, str | None, str | None]:
+    """
+    Strip an optional leading /subject:<name> /chapter:<name> prefix from the query.
+    Returns (cleaned_query, subject, chapter).
+    Frontend sends: /subject:Mathematics /chapter:Algebra <actual question>
+    """
+    import re
+    subject: str | None = None
+    chapter: str | None = None
+    q = query
+    m = re.match(r'^/subject:([^/\n]+?)(?:\s+/chapter:([^/\n]+?))?\s+', q, re.IGNORECASE)
+    if m:
+        subject = m.group(1).strip()
+        chapter = (m.group(2) or "").strip() or None
+        q = q[m.end():].strip()
+    return q, subject, chapter
 # ---------------------------------------------------------------------------
 # Model selection
 # ---------------------------------------------------------------------------
@@ -279,12 +310,16 @@ def _ollama_http_timeout() -> httpx.Timeout:
     return httpx.Timeout(connect=connect_s, read=read_s, write=120.0, pool=30.0)
 
 
-async def _ollama_chat_stream(model: str, messages: list[dict], think: bool = False):
+async def _ollama_chat_stream(
+    model: str, messages: list[dict], think: bool = False,
+    subject: str | None = None, chapter: str | None = None,
+):
     """Yield raw parsed JSON chunks from Ollama /api/chat."""
     long_gen = bool(think) or model == _deep_model()
+    sys_prompt = build_system_prompt(subject, chapter)
     payload: dict = {
         "model": model,
-        "messages": [{"role": "system", "content": SYSTEM_PROMPT.strip()}] + messages,
+        "messages": [{"role": "system", "content": sys_prompt}] + messages,
         "stream": True,
         "options": _ollama_options(long_generation=long_gen),
     }
@@ -300,12 +335,15 @@ async def _ollama_chat_stream(model: str, messages: list[dict], think: bool = Fa
                     yield json.loads(line)
 
 
-async def _stream_deepseek(session_id: str, query: str, model: str):
+async def _stream_deepseek(
+    session_id: str, query: str, model: str,
+    subject: str | None = None, chapter: str | None = None,
+):
     """Stream deepseek-r1 with thinking tokens."""
     messages = _build_messages(session_id)
     full_response = []
 
-    async for chunk in _ollama_chat_stream(model, messages, think=True):
+    async for chunk in _ollama_chat_stream(model, messages, think=True, subject=subject, chapter=chapter):
         msg = chunk.get("message", {})
         thinking_text = msg.get("thinking", "")
         response_text = msg.get("content",  "")
@@ -327,16 +365,22 @@ async def _stream_deepseek(session_id: str, query: str, model: str):
                 "response":   response_text,
             }) + "\n"
 
-    # Persist the full assistant reply to history
     _push(session_id, "assistant", "".join(full_response))
 
 
-async def _stream_standard_raw(session_id: str, query: str, model: str):
-    """Stream a standard model; raises on failure so the fallback layer can catch it."""
+class _OllamaEmptyError(RuntimeError):
+    """Raised when Ollama connects but returns zero content tokens."""
+
+
+async def _stream_standard_raw(
+    session_id: str, query: str, model: str,
+    subject: str | None = None, chapter: str | None = None,
+):
+    """Stream a standard model; raises _OllamaEmptyError when zero tokens arrive."""
     messages = _build_messages(session_id)
     full_response = []
 
-    async for chunk in _ollama_chat_stream(model, messages):
+    async for chunk in _ollama_chat_stream(model, messages, subject=subject, chapter=chapter):
         token = chunk.get("message", {}).get("content", "")
         if token:
             full_response.append(token)
@@ -346,25 +390,101 @@ async def _stream_standard_raw(session_id: str, query: str, model: str):
                 "response":   token,
             }) + "\n"
 
+    if not full_response:
+        raise _OllamaEmptyError(f"Model {model!r} produced no tokens")
+
     _push(session_id, "assistant", "".join(full_response))
 
 
-async def _stream_with_fallback(session_id: str, query: str, model: str):
-    """Try primary model; silently fall back to the other on failure."""
+async def _stream_gemini_fallback(
+    session_id: str,
+    subject: str | None = None,
+    chapter: str | None = None,
+):
+    """
+    Gemini fallback streamed as NDJSON.
+    Called when all Ollama paths produce zero tokens.
+    Builds a context-aware system prompt and emits chunks one-by-one.
+    """
+    logger.warning("Ollama produced no tokens — falling back to Gemini")
+    yield json.dumps({
+        "session_id": session_id,
+        "model_name": "gemini",
+        "notice": "Ollama unavailable — using Gemini cloud fallback.",
+    }) + "\n"
+
     try:
-        async for chunk in _stream_standard_raw(session_id, query, model):
+        # _gemini_generate_sync is blocking; run it in a thread
+        text, provider = await asyncio.to_thread(_gemini_generate_sync, session_id)
+        if not text.strip():
+            raise RuntimeError("Gemini returned empty reply")
+
+        # Push to history
+        _push(session_id, "assistant", text)
+
+        # Emit in ~60-char chunks so the frontend sees progressive rendering
+        chunk_size = 60
+        for i in range(0, len(text), chunk_size):
+            piece = text[i:i + chunk_size]
+            yield json.dumps({
+                "session_id": session_id,
+                "model_name": provider,
+                "response":   piece,
+            }) + "\n"
+            await asyncio.sleep(0)  # yield event-loop so chunks flush
+
+    except Exception as gem_exc:
+        logger.error("Gemini fallback also failed: %s", _redact_keys(str(gem_exc)))
+        yield json.dumps({
+            "session_id": session_id,
+            "model_name": "gemini",
+            "error": "Both Ollama and Gemini are unavailable. Please try again later.",
+        }) + "\n"
+
+
+async def _stream_with_fallback(
+    session_id: str, query: str, model: str,
+    subject: str | None = None, chapter: str | None = None,
+):
+    """
+    Try primary Ollama model → secondary Ollama model → Gemini cloud.
+    Falls back to Gemini on any exception OR when Ollama returns zero tokens.
+    """
+    produced_tokens = False
+    try:
+        async for chunk in _stream_standard_raw(session_id, query, model, subject=subject, chapter=chapter):
+            produced_tokens = True
             yield chunk
-        return
+        if produced_tokens:
+            return
+        # Zero tokens without exception — treat same as empty error
+        raise _OllamaEmptyError(f"Model {model!r} produced no tokens")
+
+    except _OllamaEmptyError as empty_exc:
+        # No output from primary; try the secondary Ollama model first
+        fallback = _get_fallback(model)
+        if fallback:
+            logger.warning("%s — trying secondary Ollama model %s", empty_exc, fallback)
+            secondary_tokens = False
+            try:
+                async for chunk in _stream_standard_raw(session_id, query, fallback, subject=subject, chapter=chapter):
+                    secondary_tokens = True
+                    yield chunk
+                if secondary_tokens:
+                    return
+            except Exception as fb_exc:
+                logger.warning("Secondary Ollama %s also failed: %s", fallback, fb_exc)
+
+        # Both Ollama paths dead → Gemini
+        async for chunk in _stream_gemini_fallback(session_id, subject=subject, chapter=chapter):
+            yield chunk
 
     except Exception as exc:
         fallback = _get_fallback(model)
         if fallback is None:
-            logger.error("Model %s failed, no fallback: %s", model, exc)
-            yield json.dumps({
-                "session_id": session_id,
-                "model_name": model,
-                "error": f"Model failed: {exc}",
-            }) + "\n"
+            logger.error("Model %s failed, no Ollama fallback: %s — trying Gemini", model, exc)
+            async for chunk in _stream_gemini_fallback(session_id, subject=subject, chapter=chapter):
+                yield chunk
             return
 
         logger.warning("Model %s failed (%s) → switching to %s", model, exc, fallback)
@@ -374,16 +494,17 @@ async def _stream_with_fallback(session_id: str, query: str, model: str):
             "notice": f"Primary model '{model}' unavailable. Switched to '{fallback}'.",
         }) + "\n"
 
+        secondary_tokens = False
         try:
-            async for chunk in _stream_standard_raw(session_id, query, fallback):
+            async for chunk in _stream_standard_raw(session_id, query, fallback, subject=subject, chapter=chapter):
+                secondary_tokens = True
                 yield chunk
         except Exception as fb_exc:
-            logger.error("Fallback %s also failed: %s", fallback, fb_exc)
-            yield json.dumps({
-                "session_id": session_id,
-                "model_name": fallback,
-                "error": f"Fallback also failed: {fb_exc}",
-            }) + "\n"
+            logger.error("Fallback Ollama %s also failed: %s — trying Gemini", fallback, fb_exc)
+
+        if not secondary_tokens:
+            async for chunk in _stream_gemini_fallback(session_id, subject=subject, chapter=chapter):
+                yield chunk
 
 
 # ---------------------------------------------------------------------------
@@ -463,15 +584,21 @@ async def chat(
     if not ok:
         raise HTTPException(status_code=400, detail=reason)
 
-    # Push the user message BEFORE streaming (model needs it in history)
-    _push(session_id, "user", query)
+    # Parse optional /subject: /chapter: context prefix from the query
+    cleaned_query, subject, chapter = parse_subject_context(query)
+    if not cleaned_query:
+        cleaned_query = query  # safety: never send empty query
 
-    model = _select_model(query, deep_research)
+    # Push the cleaned user message to history
+    _push(session_id, "user", cleaned_query)
+
+    model = _select_model(cleaned_query, deep_research)
+    logger.info("Chat | subject=%s chapter=%s model=%s", subject, chapter, model)
 
     if model == _deep_model():
-        generator = _stream_deepseek(session_id, query, model)
+        generator = _stream_deepseek(session_id, cleaned_query, model, subject=subject, chapter=chapter)
     else:
-        generator = _stream_with_fallback(session_id, query, model)
+        generator = _stream_with_fallback(session_id, cleaned_query, model, subject=subject, chapter=chapter)
 
     return StreamingResponse(generator, media_type="application/x-ndjson")
 

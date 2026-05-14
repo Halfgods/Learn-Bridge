@@ -10,14 +10,17 @@ export const Route = createFileRoute("/app/subject/$subjectId")({
   component: SubjectExplorer,
 });
 
-const subjectMapping: Record<string, string> = {
-  math: "Mathematics",
-  science: "Science",
-  english: "English",
-  social: "Social Science",
-  computer: "Computer",
-  languages: "Languages",
-};
+/**
+ * The subjectId in the URL is the DB subject name lowercased & spaces→hyphens.
+ * We reverse that slug to get the exact DB name to query.
+ * e.g. "social-science" → "Social Science", "mathematics" → "Mathematics"
+ */
+function slugToSubjectName(slug: string): string {
+  return decodeURIComponent(slug)
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
 
 // Longest Common Subsequence
 function computeLCS(t: string, q: string): number {
@@ -42,7 +45,8 @@ function computeLCS(t: string, q: string): number {
 
 function SubjectExplorer() {
   const { subjectId } = Route.useParams();
-  const dbSubjectName = subjectMapping[subjectId] || "Mathematics";
+  // Derive the DB subject name from the slug — no static map needed
+  const dbSubjectName = slugToSubjectName(subjectId);
   const [searchQuery, setSearchQuery] = useState("");
   
   const { data: user } = useQuery({

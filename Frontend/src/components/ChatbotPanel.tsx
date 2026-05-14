@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useRouterState } from "@tanstack/react-router";
 import {
   Bot,
   Send,
@@ -19,6 +20,34 @@ import mascotImg from "@/assets/mascot.png";
 import { tutorPath } from "@/lib/api";
 
 const NOVA_SESSION_ID = "nova-panel";
+
+/** Reads the current URL to extract subject + chapter context for the model. */
+function useSubjectContext(): { subject: string | null; chapter: string | null } {
+  const path = useRouterState({ select: (s) => s.location.pathname });
+  // /app/chapter/<chapterId>?subjectName=...
+  const chapterMatch = path.match(/\/app\/chapter\/(.+)/);
+  if (chapterMatch) {
+    const params = new URLSearchParams(
+      typeof window !== "undefined" ? window.location.search : ""
+    );
+    return {
+      subject: params.get("subjectName"),
+      chapter: decodeURIComponent(chapterMatch[1]),
+    };
+  }
+  // /app/subject/<subjectId>
+  const subjectMatch = path.match(/\/app\/subject\/(.+)/);
+  if (subjectMatch) {
+    const slug = subjectMatch[1];
+    const subject = decodeURIComponent(slug)
+      .split("-")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+    return { subject, chapter: null };
+  }
+  return { subject: null, chapter: null };
+}
+
 
 type Message = {
   id: string;
@@ -81,6 +110,7 @@ export function ChatbotPanel() {
   const [isSending, setIsSending] = useState(false);
   const [zoomed, setZoomed] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
+  const { subject, chapter } = useSubjectContext();
 
   useEffect(() => {
     void fetch(tutorPath("/chat/history/clear"), {
@@ -96,73 +126,132 @@ export function ChatbotPanel() {
 
     const deep = /^\/thinking(\s|$)/i.test(raw);
     const stripped = raw.replace(/^\/thinking\s*/i, "").trim();
-    const queryForApi = stripped || raw;
+    let queryForApi = stripped || raw;
+
+    // Prepend subject/chapter context so Ollama knows the current lesson
+    if (subject) {
+      const prefix = chapter
+        ? `/subject:${subject} /chapter:${chapter} `
+        : `/subject:${subject} `;
+      queryForApi = prefix + queryForApi;
+    }
 
     const userMsg: Message = { id: `u-${Date.now()}`, role: "user", text: raw };
     setMessages((m) => [...m, userMsg]);
     setInput("");
     setIsSending(true);
 
-    try {
-      const res = await fetch(tutorPath("/chat/sync"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: queryForApi,
-          session_id: NOVA_SESSION_ID,
-          deep_research: deep,
-        }),
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        detail?: string;
-        reply?: string;
-        thinking?: string;
-      };
+    // Placeholder AI message that we update token-by-token
+    const aiId = `a-${Date.now()}`;
+    setMessages((m) => [...m, { id: aiId, role: "ai", text: "" }]);
 
-      if (!res.ok) {
+    try {
+      const url =
+        `${tutorPath("/chat")}` +
+        `?query=${encodeURIComponent(queryForApi)}` +
+        `&session_id=${encodeURIComponent(NOVA_SESSION_ID)}` +
+        `&deep_research=${deep}`;
+
+      const res = await fetch(url, { method: "POST" });
+
+      if (!res.ok || !res.body) {
+        const errData = await res.json().catch(() => ({})) as { detail?: string; error?: string };
         const errText =
-          typeof data.error === "string"
-            ? data.error
-            : typeof data.detail === "string"
-              ? data.detail
-              : res.status === 400
-                ? "That message could not be sent. Check length, wording, or try a clearer study question."
-                : "Nova could not answer right now. Ensure Ollama is running (or Gemini keys are set) and try again.";
-        setMessages((m) => [
-          ...m,
-          {
-            id: `e-${Date.now()}`,
-            role: "ai",
-            text: errText,
-            isError: true,
-          },
-        ]);
+          errData.error ?? errData.detail ??
+          (res.status === 400
+            ? "That message could not be sent. Check length or try a clearer question."
+            : "Nova could not answer right now. Ensure Ollama is running and try again.");
+        setMessages((m) =>
+          m.map((msg) =>
+            msg.id === aiId ? { ...msg, text: errText, isError: true } : msg
+          )
+        );
         return;
       }
 
-      const reply = typeof data.reply === "string" ? data.reply : "";
-      const thinkingRaw = typeof data.thinking === "string" ? data.thinking.trim() : "";
-      const thinking = thinkingRaw.length > 0 ? thinkingRaw : undefined;
-      setMessages((m) => [
-        ...m,
-        {
-          id: `a-${Date.now()}`,
-          role: "ai",
-          text: reply || "(No text returned)",
-          thinking,
-        },
-      ]);
+      // Stream NDJSON lines
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let thinkingAcc = "";
+      let replyAcc = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // Process every complete line
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? ""; // keep incomplete tail
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const chunk = JSON.parse(trimmed) as {
+              response?: string;
+              thinking?: boolean;
+              error?: string;
+              notice?: string;
+            };
+
+            if (chunk.error) {
+              setMessages((m) =>
+                m.map((msg) =>
+                  msg.id === aiId ? { ...msg, text: chunk.error!, isError: true } : msg
+                )
+              );
+              break;
+            }
+
+            if (chunk.response) {
+              if (chunk.thinking) {
+                thinkingAcc += chunk.response;
+              } else {
+                replyAcc += chunk.response;
+              }
+              // Live update — show what we have so far
+              setMessages((m) =>
+                m.map((msg) =>
+                  msg.id === aiId
+                    ? {
+                        ...msg,
+                        text: replyAcc || "…",
+                        thinking: thinkingAcc || undefined,
+                      }
+                    : msg
+                )
+              );
+            }
+          } catch {
+            // Malformed JSON chunk — skip
+          }
+        }
+      }
+
+      // Final clean-up: if nothing came through, show error
+      if (!replyAcc.trim()) {
+        setMessages((m) =>
+          m.map((msg) =>
+            msg.id === aiId
+              ? { ...msg, text: "Nova returned an empty reply. Is Ollama running?", isError: true }
+              : msg
+          )
+        );
+      }
     } catch {
-      setMessages((m) => [
-        ...m,
-        {
-          id: `e-${Date.now()}`,
-          role: "ai",
-          text: "Could not reach the tutor service. From Backend/Chatbot_LLM run: python main.py (uvicorn on port 8000; Vite proxies /llm here).",
-          isError: true,
-        },
-      ]);
+      setMessages((m) =>
+        m.map((msg) =>
+          msg.id === aiId
+            ? {
+                ...msg,
+                text: "Could not reach the tutor service. From Backend/Chatbot_LLM run: python main.py",
+                isError: true,
+              }
+            : msg
+        )
+      );
     } finally {
       setIsSending(false);
     }
