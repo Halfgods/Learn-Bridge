@@ -1,6 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Home, BookOpen, Trophy, Calendar, Settings, GraduationCap } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useState } from "react";
 
 const items = [
   { to: "/app", label: "Home", icon: Home, exact: true },
@@ -12,31 +13,50 @@ const items = [
 
 export function AppSidebar() {
   const path = useRouterState({ select: (s) => s.location.pathname });
+  const [isOpen, setIsOpen] = useState(false);
+
   return (
     <>
       {/* Desktop */}
-      <aside className="hidden lg:flex w-[88px] shrink-0 p-4 flex-col items-center gap-3">
-        <div className="h-14 w-14 rounded-2xl gradient-primary clay-sm flex items-center justify-center text-white">
-          <GraduationCap className="w-7 h-7" />
+      <aside className="hidden lg:flex w-[88px] shrink-0 p-4 flex-col items-center gap-3 sticky top-0 h-screen z-40">
+        <div 
+          onClick={() => setIsOpen(!isOpen)}
+          className={cn(
+            "h-14 w-14 rounded-2xl gradient-primary clay-sm flex items-center justify-center text-white cursor-pointer transition-all duration-300 hover:scale-105 active:scale-95 shadow-lg",
+            isOpen ? "shadow-[0_0_20px_rgba(168,85,247,0.6)]" : "hover:shadow-[0_0_15px_rgba(168,85,247,0.4)]"
+          )}
+          title="Toggle Navigation"
+        >
+          <GraduationCap className={cn("w-7 h-7 transition-all duration-300", isOpen ? "rotate-12 scale-110" : "")} />
         </div>
-        <nav className="clay-lg p-2 flex flex-col gap-2 mt-2">
-          {items.map((it) => {
-            const active = it.exact ? path === it.to : path.startsWith(it.to);
-            return (
-              <Link
-                key={it.to}
-                to={it.to}
-                className={cn(
-                  "h-12 w-12 rounded-2xl flex items-center justify-center transition-all",
-                  active ? "gradient-primary text-white glow-purple" : "text-muted-foreground hover:bg-muted"
-                )}
-                title={it.label}
-              >
-                <it.icon className="w-5 h-5" />
-              </Link>
-            );
-          })}
-        </nav>
+        
+        <div 
+          className={cn(
+            "grid transition-all duration-500 ease-in-out",
+            isOpen ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0 mt-0"
+          )}
+        >
+          <div className="overflow-hidden">
+            <nav className="clay-lg p-2 flex flex-col gap-2">
+              {items.map((it) => {
+                const active = it.exact ? path === it.to : path.startsWith(it.to);
+                return (
+                  <Link
+                    key={it.to}
+                    to={it.to}
+                    className={cn(
+                      "h-12 w-12 rounded-2xl flex items-center justify-center transition-all duration-300",
+                      active ? "gradient-primary text-white glow-purple scale-105" : "text-muted-foreground hover:bg-muted hover:scale-110 active:scale-95"
+                    )}
+                    title={it.label}
+                  >
+                    <it.icon className="w-5 h-5" />
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+        </div>
       </aside>
 
       {/* Mobile bottom bar */}
