@@ -9,13 +9,21 @@ export const Route = createFileRoute("/app/")({
   component: Dashboard,
 });
 
-const subjects = [
+const subjectMeta: Record<string, any> = {
+  "Mathematics": { icon: Calculator, gradient: "gradient-primary", text: "text-white", progress: 68, lessons: 24 },
+  "Science": { icon: Beaker, gradient: "gradient-cyan", text: "text-white", progress: 42, lessons: 18 },
+  "English": { icon: BookOpen, gradient: "gradient-yellow", text: "text-amber-900", progress: 81, lessons: 15 },
+  "Social Science": { icon: Globe2, gradient: "gradient-peach", text: "text-orange-900", progress: 35, lessons: 20 },
+  "Computer": { icon: Cpu, gradient: "gradient-mint", text: "text-emerald-900", progress: 56, lessons: 12 },
+  "Languages": { icon: Languages, gradient: "gradient-primary", text: "text-white", progress: 22, lessons: 16 },
+  "Environmental Studies": { icon: Globe2, gradient: "gradient-mint", text: "text-emerald-900", progress: 40, lessons: 14 }
+};
+
+const fallbackSubjects = [
   { id: "math", name: "Mathematics", icon: Calculator, gradient: "gradient-primary", text: "text-white", progress: 68, lessons: 24 },
   { id: "science", name: "Science", icon: Beaker, gradient: "gradient-cyan", text: "text-white", progress: 42, lessons: 18 },
   { id: "english", name: "English", icon: BookOpen, gradient: "gradient-yellow", text: "text-amber-900", progress: 81, lessons: 15 },
   { id: "social", name: "Social Science", icon: Globe2, gradient: "gradient-peach", text: "text-orange-900", progress: 35, lessons: 20 },
-  { id: "computer", name: "Computer", icon: Cpu, gradient: "gradient-mint", text: "text-emerald-900", progress: 56, lessons: 12 },
-  { id: "languages", name: "Languages", icon: Languages, gradient: "gradient-primary", text: "text-white", progress: 22, lessons: 16 },
 ];
 
 function Dashboard() {
@@ -38,12 +46,35 @@ function Dashboard() {
     retry: false
   });
 
+  const { data: dynamicSubjects } = useQuery({
+    queryKey: ['subjects', user?.grade],
+    queryFn: async () => {
+      const res = await fetch(apiPath(`/api/curriculum/class/${user?.grade}/subjects`));
+      if (!res.ok) throw new Error("Failed to fetch subjects");
+      const data = await res.json();
+      return data.subjects;
+    },
+    enabled: !!user?.grade,
+    staleTime: Infinity
+  });
+
   if (error) {
     navigate({ to: "/login" });
     return null;
   }
 
   const firstName = user?.name ? user.name.split(' ')[0] : '...';
+  
+  const subjects = dynamicSubjects && dynamicSubjects.length > 0
+    ? dynamicSubjects.map((name: string) => {
+        const meta = subjectMeta[name] || { icon: BookOpen, gradient: "gradient-primary", text: "text-white", progress: 0, lessons: 0 };
+        return {
+          id: name.toLowerCase().replace(/\s+/g, '-'),
+          name,
+          ...meta
+        };
+      })
+    : fallbackSubjects;
 
   return (
     <div className="p-6 lg:p-10 max-w-6xl mx-auto space-y-8">

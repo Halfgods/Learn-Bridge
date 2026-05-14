@@ -21,6 +21,8 @@ function Assessment() {
   const [done, setDone] = useState(false);
   const [picked, setPicked] = useState<number | null>(null);
 
+  const [timeLeft, setTimeLeft] = useState(60);
+
   // Fetch current user to get their grade for prefetching
   const { data: user } = useQuery({
     queryKey: ['me'],
@@ -40,18 +42,24 @@ function Assessment() {
   // Background prefetching: load all chapters while user takes the quiz!
   useEffect(() => {
     if (user?.grade) {
-      const subjects = ["Mathematics", "Science", "English", "Social Science", "Computer", "Languages"];
-      subjects.forEach(subject => {
-        queryClient.prefetchQuery({
-          queryKey: ['chapters', user.grade, subject],
-          queryFn: async () => {
-            const res = await fetch(apiPath(`/api/curriculum/class/${user.grade}/subject/${encodeURIComponent(subject)}/chapters`));
-            if (!res.ok) throw new Error("Failed to prefetch");
-            return res.json();
-          },
-          staleTime: Infinity
-        });
-      });
+      // First, fetch the actual subjects for this user's grade
+      fetch(apiPath(`/api/curriculum/class/${user.grade}/subjects`))
+        .then(res => res.json())
+        .then(data => {
+          const subjects = data.subjects || ["Mathematics", "Science", "English", "Social Science"];
+          subjects.forEach((subject: string) => {
+            queryClient.prefetchQuery({
+              queryKey: ['chapters', user.grade, subject],
+              queryFn: async () => {
+                const res = await fetch(apiPath(`/api/curriculum/class/${user.grade}/subject/${encodeURIComponent(subject)}/chapters`));
+                if (!res.ok) throw new Error("Failed to prefetch");
+                return res.json();
+              },
+              staleTime: Infinity
+            });
+          });
+        })
+        .catch(err => console.error("Prefetch subjects failed:", err));
     }
   }, [user, queryClient]);
 
@@ -65,6 +73,31 @@ function Assessment() {
     staleTime: 0,
     refetchOnMount: true
   });
+
+  // Timer countdown effect
+  useEffect(() => {
+    if (isLoading || error || done) return;
+
+    const interval = setInterval(() => {
+      setTimeLeft((prev) => {
+        // When timer reaches 0
+        if (prev <= 1) {
+          clearInterval(interval);
+          setDone(true); // Auto submit and show results
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isLoading, error, done]);
+
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  };
 
   const questions = data?.questions || [];
 
@@ -123,8 +156,8 @@ function Assessment() {
               <p className="text-xs text-muted-foreground">Question {i + 1} of {questions.length}</p>
             </div>
           </div>
-          <div className="clay-sm bg-card px-4 py-2 rounded-2xl flex items-center gap-2 font-bold">
-            <Timer className="w-4 h-4 text-primary" /> 0:42
+          <div className={cn("clay-sm bg-card px-4 py-2 rounded-2xl flex items-center gap-2 font-bold min-w-[80px] justify-center transition-colors", timeLeft <= 10 ? "text-destructive border-destructive" : "text-primary")}>
+            <Timer className="w-4 h-4" /> {formatTime(timeLeft)}
           </div>
         </div>
 
@@ -168,8 +201,8 @@ function Result({ score, total, onContinue }: { score: number; total: number; on
   const pct = (score / total) * 100;
   const tier =
     pct >= 80 ? { label: "Advanced Learner", color: "gradient-primary", emoji: "🚀" } :
-    pct >= 50 ? { label: "Average Learner", color: "gradient-cyan", emoji: "🌟" } :
-    { label: "Beginner Learner", color: "gradient-peach", emoji: "🌱" };
+      pct >= 50 ? { label: "Average Learner", color: "gradient-cyan", emoji: "🌟" } :
+        { label: "Beginner Learner", color: "gradient-peach", emoji: "🌱" };
 
   return (
     <div className="relative min-h-screen p-6 flex items-center justify-center">

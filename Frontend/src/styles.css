@@ -146,27 +146,69 @@
 }
 
 .dark {
-  --background: oklch(0.18 0.03 280);
-  --foreground: oklch(0.96 0.01 280);
-  --card: oklch(0.22 0.04 280);
-  --card-foreground: oklch(0.96 0.01 280);
-  --popover: oklch(0.22 0.04 280);
-  --popover-foreground: oklch(0.96 0.01 280);
-  --primary: oklch(0.72 0.2 295);
-  --primary-foreground: oklch(0.18 0.03 280);
-  --secondary: oklch(0.28 0.05 280);
-  --secondary-foreground: oklch(0.96 0.01 280);
-  --muted: oklch(0.26 0.04 280);
-  --muted-foreground: oklch(0.7 0.03 280);
-  --accent: oklch(0.3 0.06 280);
-  --accent-foreground: oklch(0.96 0.01 280);
-  --border: oklch(0.32 0.04 280);
-  --input: oklch(0.3 0.04 280);
-  --ring: oklch(0.72 0.2 295);
+  /* Near-black luxury base */
+  --background: #07090f;
+  --foreground: rgba(235, 238, 255, 0.88);
+
+  /* Deep charcoal surface for cards */
+  --card: #0f1420;
+  --card-foreground: rgba(235, 238, 255, 0.88);
+
+  --popover: #0f1420;
+  --popover-foreground: rgba(235, 238, 255, 0.88);
+
+  /* Brighter purple for dark contrast */
+  --primary: oklch(0.74 0.22 295);
+  --primary-foreground: #07090f;
+
+  --secondary: #161d2e;
+  --secondary-foreground: rgba(235, 238, 255, 0.75);
+
+  --muted: #131926;
+  --muted-foreground: rgba(180, 188, 215, 0.6);
+
+  --accent: #161d2e;
+  --accent-foreground: rgba(235, 238, 255, 0.88);
+
+  --destructive: oklch(0.65 0.22 25);
+  --destructive-foreground: oklch(0.99 0.005 280);
+
+  /* Hairline borders — nearly invisible */
+  --border: rgba(255, 255, 255, 0.06);
+  --input: #131926;
+  --ring: oklch(0.74 0.22 295);
+
+  /* ── Dark clay shadow system ────────────────────────────────────
+     Pure inner-shadow approach — no outer glow on black backgrounds.
+     Light top-left highlight + dark bottom-right inner shadow. */
   --shadow-clay:
-    8px 8px 24px oklch(0.05 0.02 280 / 0.5),
-    -6px -6px 18px oklch(0.32 0.05 280 / 0.4),
-    inset 1px 1px 1px oklch(0.4 0.06 280 / 0.4);
+    inset 12px 8px 16px rgba(255, 255, 255, 0.03),
+    inset -12px -8px 16px rgba(0, 0, 0, 0.65);
+
+  --shadow-clay-sm:
+    inset 6px 4px 10px rgba(255, 255, 255, 0.03),
+    inset -6px -4px 10px rgba(0, 0, 0, 0.55);
+
+  --shadow-clay-lg:
+    inset 16px 10px 24px rgba(255, 255, 255, 0.04),
+    inset -16px -10px 24px rgba(0, 0, 0, 0.70);
+
+  --shadow-clay-pressed:
+    inset 4px 4px 10px rgba(0, 0, 0, 0.7),
+    inset -2px -2px 6px rgba(255, 255, 255, 0.03);
+
+  /* Ambient glow — very subtle, only on interactive hovers */
+  --shadow-glow-purple: 0 0 28px 4px rgba(130, 80, 255, 0.15);
+  --shadow-glow-cyan:   0 0 28px 4px rgba(50, 180, 255, 0.13);
+
+  --sidebar: #07090f;
+  --sidebar-foreground: rgba(235, 238, 255, 0.88);
+  --sidebar-primary: oklch(0.74 0.22 295);
+  --sidebar-primary-foreground: #07090f;
+  --sidebar-accent: #161d2e;
+  --sidebar-accent-foreground: rgba(235, 238, 255, 0.75);
+  --sidebar-border: rgba(255, 255, 255, 0.05);
+  --sidebar-ring: oklch(0.74 0.22 295);
 }
 
 @layer base {
@@ -188,30 +230,71 @@
 }
 
 @layer utilities {
+  /* ── Light mode clay ───────────────── */
   .clay {
     background: var(--card);
     box-shadow: var(--shadow-clay);
     border-radius: var(--radius-2xl);
   }
-  .clay-sm { box-shadow: var(--shadow-clay-sm); border-radius: var(--radius-xl); background: var(--card); }
-  .clay-lg { box-shadow: var(--shadow-clay-lg); border-radius: var(--radius-3xl); background: var(--card); }
+  .clay-sm {
+    box-shadow: var(--shadow-clay-sm);
+    border-radius: var(--radius-xl);
+    background: var(--card);
+  }
+  .clay-lg {
+    box-shadow: var(--shadow-clay-lg);
+    border-radius: var(--radius-3xl);
+    background: var(--card);
+  }
   .clay-pressed { box-shadow: var(--shadow-clay-pressed); }
+
+  /* ── Dark mode card surface override ──
+     Gradient fill replaces flat --card color for that inflated look */
+  .dark .clay,
+  .dark .clay-sm,
+  .dark .clay-lg {
+    background: linear-gradient(145deg, #121826, #0b1120);
+  }
+
+  /* ── Tactile hover effect for interactive clay elements ── */
+  .dark .clay-interactive {
+    transition: box-shadow 0.25s ease, transform 0.2s ease;
+  }
+  .dark .clay-interactive:hover {
+    transform: scale(1.02);
+    box-shadow:
+      inset 14px 10px 20px rgba(255, 255, 255, 0.055),
+      inset -14px -10px 20px rgba(0, 0, 0, 0.75),
+      0 0 24px 3px rgba(100, 60, 255, 0.12);
+  }
+
+  /* ── Glass ── */
   .glass {
     background: oklch(1 0 0 / 0.6);
     backdrop-filter: blur(20px) saturate(140%);
     -webkit-backdrop-filter: blur(20px) saturate(140%);
     border: 1px solid oklch(1 0 0 / 0.5);
   }
-  .gradient-hero { background: var(--gradient-hero); }
+  .dark .glass {
+    background: rgba(15, 20, 32, 0.75);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  /* ── Gradients ── */
+  .gradient-hero    { background: var(--gradient-hero); }
   .gradient-primary { background: var(--gradient-primary); }
-  .gradient-cyan { background: var(--gradient-cyan); }
-  .gradient-yellow { background: var(--gradient-yellow); }
-  .gradient-peach { background: var(--gradient-peach); }
-  .gradient-mint { background: var(--gradient-mint); }
+  .gradient-cyan    { background: var(--gradient-cyan); }
+  .gradient-yellow  { background: var(--gradient-yellow); }
+  .gradient-peach   { background: var(--gradient-peach); }
+  .gradient-mint    { background: var(--gradient-mint); }
 
+  /* ── Glows ── */
   .glow-purple { box-shadow: var(--shadow-glow-purple); }
-  .glow-cyan { box-shadow: var(--shadow-glow-cyan); }
+  .glow-cyan   { box-shadow: var(--shadow-glow-cyan); }
 
+  /* ── Background blobs ── */
   .blob {
     position: absolute;
     border-radius: 50%;
@@ -220,18 +303,28 @@
     pointer-events: none;
     animation: blob 18s ease-in-out infinite;
   }
+  .dark .blob {
+    opacity: 0.18;
+    filter: blur(80px);
+  }
+
+  /* ── Muted border utility for dark hairlines ── */
+  .dark .border,
+  .dark [class*="border-"] {
+    border-color: rgba(255, 255, 255, 0.06);
+  }
 }
 
 @keyframes float {
   0%, 100% { transform: translateY(0) rotate(0deg); }
-  50% { transform: translateY(-14px) rotate(2deg); }
+  50%       { transform: translateY(-14px) rotate(2deg); }
 }
 @keyframes blob {
   0%, 100% { transform: translate(0,0) scale(1); }
-  33% { transform: translate(40px,-30px) scale(1.1); }
-  66% { transform: translate(-30px,20px) scale(0.95); }
+  33%       { transform: translate(40px,-30px) scale(1.1); }
+  66%       { transform: translate(-30px,20px) scale(0.95); }
 }
 @keyframes pop {
-  0% { transform: scale(0.8); opacity: 0; }
-  100% { transform: scale(1); opacity: 1; }
+  0%   { transform: scale(0.8); opacity: 0; }
+  100% { transform: scale(1);   opacity: 1; }
 }

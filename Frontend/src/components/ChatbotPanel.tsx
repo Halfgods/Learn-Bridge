@@ -175,36 +175,35 @@ export function ChatbotPanel() {
         onClick={() => setOpen((o) => !o)}
         className={cn(
           "fixed bottom-6 right-6 z-40 h-16 w-16 rounded-full clay-lg gradient-primary text-white",
-          "flex items-center justify-center hover:-translate-y-1 transition-all glow-purple",
-          open && "lg:hidden",
+          "flex items-center justify-center transition-all duration-300 glow-purple hover:scale-110 active:scale-95 shadow-lg",
+          open ? "scale-0 opacity-0 pointer-events-none" : "scale-100 opacity-100 hover:shadow-[0_0_20px_rgba(168,85,247,0.6)]",
         )}
         aria-label="Toggle Nova chat"
       >
-        <img src={mascotImg} alt="" width={48} height={48} className="w-12 h-12 object-contain" />
+        <img src={mascotImg} alt="" width={48} height={48} className="w-12 h-12 object-contain drop-shadow-md" />
       </button>
 
       {/* Panel */}
       <aside
         className={cn(
-          "fixed top-0 right-0 z-30 h-screen w-full sm:w-[420px] p-3 sm:p-4 transition-transform duration-300",
-          open ? "translate-x-0" : "translate-x-full lg:translate-x-0 lg:pointer-events-auto",
-          "lg:relative lg:translate-x-0 lg:w-[400px] lg:shrink-0",
+          "fixed top-0 right-0 z-50 h-screen w-full sm:w-[420px] p-3 sm:p-4 transition-all duration-500 ease-in-out",
+          open ? "translate-x-0 opacity-100 shadow-[-10px_0_30px_rgba(0,0,0,0.1)]" : "translate-x-full opacity-0 pointer-events-none",
         )}
       >
-        <div className="h-full flex flex-col clay-lg overflow-hidden">
+        <div className="h-full flex flex-col clay-lg overflow-hidden border border-border/40 shadow-xl bg-background/95 backdrop-blur-xl">
           {/* Header */}
           <header className="p-4 flex items-center gap-3 border-b border-border/50 shrink-0">
             <div className="relative">
-              <div className="h-12 w-12 rounded-2xl gradient-primary flex items-center justify-center clay-sm">
+              <div className="h-12 w-12 rounded-2xl gradient-primary flex items-center justify-center clay-sm shadow-md">
                 <img
                   src={mascotImg}
                   alt=""
                   width={40}
                   height={40}
-                  className="w-10 h-10 object-contain"
+                  className="w-10 h-10 object-contain drop-shadow-sm"
                 />
               </div>
-              <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-400 border-2 border-card" />
+              <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-400 border-2 border-card shadow-sm" />
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="font-extrabold text-base">Nova</h3>
@@ -214,7 +213,7 @@ export function ChatbotPanel() {
             </div>
             <button
               onClick={() => setOpen(false)}
-              className="lg:hidden h-9 w-9 rounded-xl clay-sm flex items-center justify-center"
+              className="h-9 w-9 rounded-xl clay-sm flex items-center justify-center hover:bg-muted transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
