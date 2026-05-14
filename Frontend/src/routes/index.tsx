@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Sparkles, Rocket, Brain, ArrowRight } from "lucide-react";
 import { Blobs } from "@/components/Blobs";
 import { ClayButton } from "@/components/ClayButton";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { MascotBadge } from "@/components/MascotBadge";
 
 export const Route = createFileRoute("/")({
@@ -27,9 +28,12 @@ function Welcome() {
           </div>
           <span className="font-extrabold text-xl">Nova Learn</span>
         </div>
-        <Link to="/login">
-          <ClayButton variant="white" size="sm">Log in</ClayButton>
-        </Link>
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
+          <Link to="/login">
+            <ClayButton variant="white" size="sm">Log in</ClayButton>
+          </Link>
+        </div>
       </header>
 
       <main className="px-6 lg:px-12 pt-8 pb-24 grid lg:grid-cols-2 gap-12 items-center max-w-7xl mx-auto">

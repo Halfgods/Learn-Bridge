@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
-import { ArrowLeft, FileText, Download, Highlighter, NotebookPen, Youtube, ExternalLink, Sparkles, Clock, TrendingUp, AlertTriangle, ZoomIn, ZoomOut, Loader2, X, ThumbsUp, ThumbsDown, CheckCircle2, BookOpen } from "lucide-react";
+import { ArrowLeft, FileText, Download, Highlighter, NotebookPen, Youtube, ExternalLink, Sparkles, Clock, TrendingUp, AlertTriangle, Loader2, X, ThumbsUp, ThumbsDown, CheckCircle2, BookOpen } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { apiPath, scrapperPath } from "@/lib/api";
@@ -167,8 +167,6 @@ function Chapter() {
                 <CheckCircle2 className="w-4 h-4" /> Saved!
               </span>
             )}
-            <button className="h-9 w-9 rounded-xl clay-sm bg-card flex items-center justify-center"><ZoomOut className="w-4 h-4"/></button>
-            <button className="h-9 w-9 rounded-xl clay-sm bg-card flex items-center justify-center"><ZoomIn className="w-4 h-4"/></button>
           </div>
         </div>
         <div className="aspect-[4/5] sm:aspect-[16/10] rounded-2xl clay-pressed bg-gradient-to-br from-muted to-card flex items-center justify-center relative overflow-hidden">

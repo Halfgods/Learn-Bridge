@@ -11,7 +11,13 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 import difflib
 import requests as req_lib
+from requests.adapters import HTTPAdapter
+from requests.exceptions import ConnectionError, Timeout
+from urllib3.util.retry import Retry
+import urllib3
 import uuid
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # Load environment variables from this file's directory (works regardless of cwd)
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 app = Flask(__name__)
@@ -363,29 +369,52 @@ def proxy_pdf():
             return jsonify({"error": "PDF not found"}), 404
         ncert_url = pdf_doc.get('ncertUrl')
 
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
-            'Referer': 'https://ncert.nic.in/',
-        }
-        upstream = req_lib.get(ncert_url, headers=headers, timeout=30, stream=True)
-        upstream.raise_for_status()
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://ncert.nic.in/',
+        'Accept': 'application/pdf,image/webp,*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+    }
 
-        def generate():
-            for chunk in upstream.iter_content(chunk_size=8192):
-                if chunk:
-                    yield chunk
+    session = req_lib.Session()
+    retries = Retry(
+        total=3,
+        backoff_factor=0.5,
+        status_forcelist=[500, 502, 503, 504],
+        allowed_methods={'GET'},
+    )
+    session.mount('https://', HTTPAdapter(max_retries=retries))
 
-        response = Response(
-            generate(),
-            status=upstream.status_code,
-            content_type='application/pdf',
-        )
-        response.headers['Content-Disposition'] = 'inline'
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        return response
-    except req_lib.RequestException as e:
-        return jsonify({"error": f"Failed to fetch PDF: {e}"}), 502
+    for attempt in range(3):
+        try:
+            upstream = session.get(
+                ncert_url,
+                headers=headers,
+                timeout=30,
+                stream=True,
+                verify=False,
+            )
+            upstream.raise_for_status()
+
+            def generate():
+                for chunk in upstream.iter_content(chunk_size=8192):
+                    if chunk:
+                        yield chunk
+
+            response = Response(
+                generate(),
+                status=upstream.status_code,
+                content_type='application/pdf',
+            )
+            response.headers['Content-Disposition'] = 'inline'
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            return response
+        except (ConnectionError, Timeout):
+            if attempt < 2:
+                continue
+            return jsonify({"error": f"Failed to fetch PDF: NCERT server unreachable. Please try again later."}), 502
+        except req_lib.RequestException as e:
+            return jsonify({"error": f"Failed to fetch PDF: {e}"}), 502
 
 
 @app.route('/api/content/pdf/confirm', methods=['POST'])
