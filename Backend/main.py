@@ -70,6 +70,8 @@ quizzes_collection = db['quizzes']
 teacher_quizzes_collection = db["teacher_quizzes"]
 quiz_attempts_collection = db["quiz_attempts"]
 chapter_attempts_collection = db["chapter_attempts"]
+concept_graphs_collection = db["concept_graphs"]
+chapter_pdfs_collection = db["chapter_pdfs"]
 
 TEACHER_ACCESS_CODE = (os.environ.get("TEACHER_ACCESS_CODE") or "NOVA-TEACHER").strip()
 
@@ -570,6 +572,23 @@ def get_related_concepts():
     if not all([std, subject_name, chapter_name]):
         return jsonify({"error": "Missing params"}), 400
     try:
+        # Check if teacher has saved a custom graph
+        saved = concept_graphs_collection.find_one(
+            {
+                'std': std,
+                'subjectName': re.compile(f'^{re.escape(subject_name)}$', re.I),
+                'chapterName': re.compile(f'^{re.escape(chapter_name)}$', re.I),
+            },
+            {'_id': 0, 'nodes': 1, 'edges': 1, 'updatedBy': 1}
+        )
+        if saved:
+            return jsonify({
+                "concepts": saved.get('nodes', []),
+                "edges": saved.get('edges', []),
+                "updatedBy": saved.get('updatedBy'),
+            }), 200
+
+        # Fallback: generate nodes from sibling chapters
         subject_filter = re.compile(f'^{re.escape(subject_name)}$', re.I)
         curriculum = curriculum_collection.find_one(
             {'std': std, 'subjectName': subject_filter},
@@ -600,12 +619,135 @@ def get_related_concepts():
             x = round(cx + r * math.cos(angle), 1)
             y = round(cy + r * math.sin(angle), 1)
             nodes.append({
+                "id": f"ch-{i}",
                 "name": name,
                 "x": x,
                 "y": y,
                 "color": gradients[i % len(gradients)],
             })
-        return jsonify({"concepts": nodes}), 200
+        return jsonify({"concepts": nodes, "edges": []}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/content/related', methods=['PUT'])
+@token_required
+def save_related_concepts(current_user):
+    """Teacher-only: save the concept graph nodes, edges for a chapter."""
+    if current_user.get('role') != 'teacher':
+        return jsonify({"error": "Only teachers can update concept graphs"}), 403
+
+    body = request.get_json(force=True) or {}
+    std = body.get('std')
+    subject_name = (body.get('subjectName') or '').strip()
+    chapter_name = ' '.join((body.get('chapterName') or '').split())
+    nodes = body.get('nodes', [])
+    edges = body.get('edges', [])
+
+    if not all([std, subject_name, chapter_name]):
+        return jsonify({"error": "Missing fields: std, subjectName, chapterName"}), 400
+
+    try:
+        teacher_name = current_user.get('name') or current_user.get('email')
+        concept_graphs_collection.update_one(
+            {
+                'std': std,
+                'subjectName': re.compile(f'^{re.escape(subject_name)}$', re.I),
+                'chapterName': re.compile(f'^{re.escape(chapter_name)}$', re.I),
+            },
+            {
+                '$set': {
+                    'std': std,
+                    'subjectName': subject_name,
+                    'chapterName': chapter_name,
+                    'nodes': nodes,
+                    'edges': edges,
+                    'updatedBy': teacher_name,
+                    'updatedAt': datetime.datetime.utcnow().isoformat(),
+                }
+            },
+            upsert=True,
+        )
+        return jsonify({"status": "saved", "updatedBy": teacher_name}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ==========================================
+# CHAPTER PDFs (teacher-uploaded PDF links)
+# ==========================================
+
+@app.route('/api/content/chapter-pdfs', methods=['GET'])
+def get_chapter_pdfs():
+    std = request.args.get('std', type=int)
+    subject_name = request.args.get('subjectName')
+    chapter_name = request.args.get('chapterName')
+    if not all([std, subject_name, chapter_name]):
+        return jsonify({"error": "Missing params"}), 400
+    try:
+        docs = list(chapter_pdfs_collection.find(
+            {
+                'std': std,
+                'subjectName': re.compile(f'^{re.escape(subject_name)}$', re.I),
+                'chapterName': re.compile(f'^{re.escape(chapter_name)}$', re.I),
+            },
+            {'_id': 0}
+        ).sort('createdAt', -1))
+        return jsonify({"pdfs": docs}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/content/chapter-pdfs', methods=['POST'])
+@token_required
+def add_chapter_pdf(current_user):
+    if current_user.get('role') != 'teacher':
+        return jsonify({"error": "Only teachers can upload PDFs"}), 403
+    body = request.get_json(force=True) or {}
+    std = body.get('std')
+    subject_name = (body.get('subjectName') or '').strip()
+    chapter_name = ' '.join((body.get('chapterName') or '').split())
+    pdf_url = (body.get('pdfUrl') or '').strip()
+    label = (body.get('label') or '').strip() or pdf_url
+    if not all([std, subject_name, chapter_name, pdf_url]):
+        return jsonify({"error": "Missing fields: std, subjectName, chapterName, pdfUrl"}), 400
+    try:
+        teacher_name = current_user.get('name') or current_user.get('email')
+        doc = {
+            'std': std,
+            'subjectName': subject_name,
+            'chapterName': chapter_name,
+            'pdfUrl': pdf_url,
+            'label': label,
+            'uploadedBy': teacher_name,
+            'createdAt': datetime.datetime.utcnow().isoformat(),
+        }
+        chapter_pdfs_collection.insert_one(doc)
+        return jsonify({"status": "added", "pdf": doc}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/content/chapter-pdfs', methods=['DELETE'])
+@token_required
+def delete_chapter_pdf(current_user):
+    if current_user.get('role') != 'teacher':
+        return jsonify({"error": "Only teachers can delete PDFs"}), 403
+    body = request.get_json(force=True) or {}
+    pdf_url = (body.get('pdfUrl') or '').strip()
+    std = body.get('std')
+    subject_name = (body.get('subjectName') or '').strip()
+    chapter_name = ' '.join((body.get('chapterName') or '').split())
+    if not all([std, subject_name, chapter_name, pdf_url]):
+        return jsonify({"error": "Missing fields"}), 400
+    try:
+        chapter_pdfs_collection.delete_one({
+            'std': std,
+            'subjectName': re.compile(f'^{re.escape(subject_name)}$', re.I),
+            'chapterName': re.compile(f'^{re.escape(chapter_name)}$', re.I),
+            'pdfUrl': pdf_url,
+        })
+        return jsonify({"status": "deleted"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

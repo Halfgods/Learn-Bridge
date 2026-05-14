@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { apiPath, scrapperPath, parseApiJson } from "@/lib/api";
 import { useMe } from "@/hooks/useMe";
 import { ClayButton } from "@/components/ClayButton";
+import ConceptGraphFlow from "@/components/ConceptGraphFlow";
 
 export const Route = createFileRoute("/app/chapter/$chapterId")({
   head: () => ({ meta: [{ title: "Chapter — Nova Learn" }] }),
@@ -302,7 +303,7 @@ function Chapter() {
         <h2 className="font-extrabold mb-4 flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-primary" /> Related concepts
         </h2>
-        <ConceptGraph center={title} subjectName={subjectName} std={std} />
+        <ConceptGraphFlow center={title} subjectName={subjectName} std={std} />
       </section>
 
       {/* Resources */}
@@ -694,87 +695,6 @@ function ChapterInsights({
         />
         <Insight icon={Sparkles} label="Attempts" value={`${chapterProgress.length}`} />
       </div>
-    </div>
-  );
-}
-
-function ConceptGraph({
-  center,
-  subjectName,
-  std,
-}: {
-  center: string;
-  subjectName: string;
-  std: number;
-}) {
-  const { data, isLoading } = useQuery({
-    queryKey: ["related-concepts", std, subjectName, center],
-    queryFn: async () => {
-      const res = await fetch(
-        apiPath(
-          `/api/content/related?std=${std}&subjectName=${encodeURIComponent(subjectName)}&chapterName=${encodeURIComponent(center)}`,
-        ),
-      );
-      const body = await parseApiJson<{
-        concepts?: { name: string; x: number; y: number; color: string }[];
-      }>(res);
-      if (!res.ok) throw new Error("Failed");
-      return body.concepts ?? [];
-    },
-  });
-
-  const nodes = data ?? [];
-  const hasData = nodes.length > 0;
-
-  return (
-    <div className="relative aspect-[16/9] rounded-2xl clay-pressed bg-card overflow-hidden">
-      {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <Loader2 className="w-6 h-6 animate-spin text-primary" />
-        </div>
-      )}
-      {!isLoading && !hasData && (
-        <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground font-bold">
-          No related concepts found.
-        </div>
-      )}
-      {hasData && (
-        <>
-          <svg
-            className="absolute inset-0 w-full h-full"
-            preserveAspectRatio="none"
-            viewBox="0 0 100 100"
-          >
-            {nodes.map((n) => (
-              <line
-                key={n.name}
-                x1="50"
-                y1="50"
-                x2={n.x}
-                y2={n.y}
-                stroke="oklch(0.85 0.05 280)"
-                strokeWidth="0.4"
-                strokeDasharray="1 1"
-              />
-            ))}
-          </svg>
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-5 py-3 rounded-2xl gradient-primary text-white font-extrabold clay-sm glow-purple text-center max-w-[40%] leading-tight">
-            {center}
-          </div>
-          {nodes.map((n) => (
-            <div
-              key={n.name}
-              className={cn(
-                "absolute -translate-x-1/2 -translate-y-1/2 px-2 py-1.5 rounded-xl font-bold text-xs clay-sm leading-tight text-center max-w-[28%]",
-                n.color,
-              )}
-              style={{ left: `${n.x}%`, top: `${n.y}%` }}
-            >
-              {n.name}
-            </div>
-          ))}
-        </>
-      )}
     </div>
   );
 }
