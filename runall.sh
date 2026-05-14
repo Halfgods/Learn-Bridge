@@ -1,5 +1,5 @@
 #!/bin/bash
-
+# only for Gnome 
 # Frontend
 gnome-terminal -- bash -c "cd Frontend && npm run dev; exec bash"
 
