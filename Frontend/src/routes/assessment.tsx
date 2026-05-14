@@ -5,7 +5,7 @@ import { Blobs } from "@/components/Blobs";
 import { ClayButton } from "@/components/ClayButton";
 import { MascotBadge } from "@/components/MascotBadge";
 import { cn } from "@/lib/utils";
-import { apiPath } from "@/lib/api";
+import { apiPath, parseApiJson } from "@/lib/api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 export const Route = createFileRoute("/assessment")({
@@ -33,19 +33,25 @@ function Assessment() {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!res.ok) return null;
-      const data = await res.json();
+      const data = await parseApiJson<{ user?: unknown }>(res);
       return data.user;
     },
     staleTime: Infinity
   });
+
+  useEffect(() => {
+    if (user?.role === "teacher") {
+      navigate({ to: "/app" });
+    }
+  }, [user, navigate]);
 
   // Background prefetching: load all chapters while user takes the quiz!
   useEffect(() => {
     if (user?.grade) {
       // First, fetch the actual subjects for this user's grade
       fetch(apiPath(`/api/curriculum/class/${user.grade}/subjects`))
-        .then(res => res.json())
-        .then(data => {
+        .then((res) => parseApiJson<{ subjects?: string[] }>(res))
+        .then((data) => {
           const subjects = data.subjects || ["Mathematics", "Science", "English", "Social Science"];
           subjects.forEach((subject: string) => {
             queryClient.prefetchQuery({
@@ -53,7 +59,7 @@ function Assessment() {
               queryFn: async () => {
                 const res = await fetch(apiPath(`/api/curriculum/class/${user.grade}/subject/${encodeURIComponent(subject)}/chapters`));
                 if (!res.ok) throw new Error("Failed to prefetch");
-                return res.json();
+                return parseApiJson(res);
               },
               staleTime: Infinity
             });
@@ -68,7 +74,7 @@ function Assessment() {
     queryFn: async () => {
       const res = await fetch(apiPath("/api/assessment/random"));
       if (!res.ok) throw new Error("Failed to fetch questions");
-      return res.json();
+      return parseApiJson(res);
     },
     staleTime: 0,
     refetchOnMount: true

@@ -1,12 +1,12 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { Mail, Lock, User, GraduationCap, ArrowRight } from "lucide-react";
+import { Mail, Lock, User, GraduationCap, ArrowRight, School } from "lucide-react";
 import { Blobs } from "@/components/Blobs";
 import { ClayButton } from "@/components/ClayButton";
 import { ClayInput } from "@/components/ClayInput";
 import { MascotBadge } from "@/components/MascotBadge";
 import { cn } from "@/lib/utils";
-import { apiPath } from "@/lib/api";
+import { apiPath, parseApiJson } from "@/lib/api";
 
 export const Route = createFileRoute("/signup")({
   head: () => ({ meta: [{ title: "Sign up — Nova Learn" }, { name: "description", content: "Create your free Nova Learn account." }] }),
@@ -16,6 +16,7 @@ export const Route = createFileRoute("/signup")({
 function Signup() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
+  const [accountType, setAccountType] = useState<"student" | "teacher">("student");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,30 +25,46 @@ function Signup() {
   const [board, setBoard] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const lastStep = accountType === "teacher" ? 1 : 2;
+  const progressDots = accountType === "teacher" ? [0, 1] : [0, 1, 2];
+
+  const register = async () => {
+    const body =
+      accountType === "teacher"
+        ? { name, email, password, role: "teacher" as const }
+        : { name, email, password, grade, board, role: "student" as const };
+    const res = await fetch(apiPath("/api/auth/register"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await parseApiJson<{ error?: string; token?: string }>(res);
+    if (!res.ok) throw new Error(data.error || "Registration failed");
+    if (!data.token) throw new Error("Registration failed");
+    localStorage.setItem("token", data.token);
+    navigate({ to: accountType === "teacher" ? "/app" : "/assessment" });
+  };
+
   const next = async () => {
     if (step === 1 && password !== confirmPassword) {
       setError("Passwords do not match");
       return;
     }
+    if (step === lastStep && accountType === "student" && (!grade || !board)) {
+      setError("Pick your class and board");
+      return;
+    }
     setError(null);
 
-    if (step < 2) {
+    if (step < lastStep) {
       setStep(step + 1);
-    } else {
-      try {
-        const res = await fetch(apiPath("/api/auth/register"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, email, password, grade, board })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Registration failed");
+      return;
+    }
 
-        localStorage.setItem("token", data.token);
-        navigate({ to: "/assessment" });
-      } catch (err: any) {
-        setError(err.message);
-      }
+    try {
+      await register();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
     }
   };
 
@@ -55,9 +72,8 @@ function Signup() {
     <div className="relative min-h-screen flex items-center justify-center p-6">
       <Blobs />
       <div className="w-full max-w-lg clay-lg bg-card p-8 space-y-6">
-        {/* Progress */}
         <div className="flex items-center gap-2">
-          {[0, 1, 2].map((i) => (
+          {progressDots.map((i) => (
             <div key={i} className={cn("h-2 flex-1 rounded-full transition-all", i <= step ? "gradient-primary" : "bg-muted")} />
           ))}
         </div>
@@ -78,10 +94,35 @@ function Signup() {
           </div>
         </div>
 
-        <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); next(); }}>
+        <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void next(); }}>
           {error && <div className="text-sm font-bold text-destructive text-center">{error}</div>}
           {step === 0 && (
             <>
+              <div>
+                <p className="text-xs font-bold text-muted-foreground ml-2 mb-2">I am signing up as</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAccountType("student")}
+                    className={cn(
+                      "h-14 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all clay-sm",
+                      accountType === "student" ? "gradient-primary text-white glow-purple" : "bg-card hover:-translate-y-0.5",
+                    )}
+                  >
+                    <School className="w-4 h-4" /> Student
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAccountType("teacher")}
+                    className={cn(
+                      "h-14 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all clay-sm",
+                      accountType === "teacher" ? "gradient-cyan text-white" : "bg-card hover:-translate-y-0.5",
+                    )}
+                  >
+                    <GraduationCap className="w-4 h-4" /> Teacher
+                  </button>
+                </div>
+              </div>
               <ClayInput label="Full name" placeholder="Your Name" icon={<User className="w-4 h-4" />} required value={name} onChange={(e) => setName(e.target.value)} />
               <ClayInput label="Email" type="email" placeholder="example@email.com" icon={<Mail className="w-4 h-4" />} required value={email} onChange={(e) => setEmail(e.target.value)} />
             </>
@@ -92,7 +133,7 @@ function Signup() {
               <ClayInput label="Confirm password" type="password" placeholder="Repeat password" icon={<Lock className="w-4 h-4" />} required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
             </>
           )}
-          {step === 2 && (
+          {step === 2 && accountType === "student" && (
             <>
               <div>
                 <label className="text-sm font-bold text-foreground/80 ml-2">Class / Grade</label>
@@ -104,7 +145,7 @@ function Signup() {
                       onClick={() => setGrade(g)}
                       className={cn(
                         "h-12 rounded-2xl font-bold transition-all",
-                        grade === g ? "gradient-primary text-white glow-purple" : "clay-sm bg-card hover:-translate-y-0.5"
+                        grade === g ? "gradient-primary text-white glow-purple" : "clay-sm bg-card hover:-translate-y-0.5",
                       )}
                     >
                       {g}
@@ -122,7 +163,7 @@ function Signup() {
                       onClick={() => setBoard(b)}
                       className={cn(
                         "h-14 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all",
-                        board === b ? "gradient-cyan text-white" : "clay-sm bg-card hover:-translate-y-0.5"
+                        board === b ? "gradient-cyan text-white" : "clay-sm bg-card hover:-translate-y-0.5",
                       )}
                     >
                       <GraduationCap className="w-4 h-4" /> {b}
@@ -140,7 +181,19 @@ function Signup() {
               </ClayButton>
             )}
             <ClayButton type="submit" size="lg" className="flex-1">
-              {step < 2 ? "Continue" : "Take quick assessment"} <ArrowRight className="w-4 h-4" />
+              {step < lastStep ? (
+                <>
+                  Continue <ArrowRight className="w-4 h-4" />
+                </>
+              ) : accountType === "teacher" ? (
+                <>
+                  Go to dashboard <ArrowRight className="w-4 h-4" />
+                </>
+              ) : (
+                <>
+                  Take quick assessment <ArrowRight className="w-4 h-4" />
+                </>
+              )}
             </ClayButton>
           </div>
         </form>

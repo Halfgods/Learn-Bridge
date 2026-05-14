@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
-import { useState } from "react";
-import { ArrowLeft, FileText, Download, Highlighter, NotebookPen, Youtube, ExternalLink, Sparkles, Clock, TrendingUp, AlertTriangle, ZoomIn, ZoomOut, Loader2, X } from "lucide-react";
+import { useState, useCallback } from "react";
+import { ArrowLeft, FileText, Download, Highlighter, NotebookPen, Youtube, ExternalLink, Sparkles, Clock, TrendingUp, AlertTriangle, ZoomIn, ZoomOut, Loader2, X, ThumbsUp, ThumbsDown, CheckCircle2, BookOpen } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { apiPath, scrapperPath } from "@/lib/api";
@@ -52,11 +52,54 @@ function Chapter() {
         throw new Error(errorData.error || "Failed to load PDF");
       }
       const json = await res.json();
-      // Build the proxy URL — served by our own Flask backend so no X-Frame-Options block
       const proxyUrl = apiPath(`/api/content/pdf/proxy?url=${encodeURIComponent(json.ncertUrl)}`);
       return { ...json, proxyUrl };
     }
   });
+
+  // PDF feedback state: 'idle' | 'confirming' | 'confirmed' | 'rejecting' | 'rejected'
+  type FeedbackState = 'idle' | 'confirming' | 'confirmed' | 'rejecting' | 'rejected';
+  const [feedback, setFeedback] = useState<FeedbackState>('idle');
+  const [subjectPdfUrl, setSubjectPdfUrl] = useState<string | null>(null);
+
+  const handleConfirm = useCallback(async () => {
+    if (!data?.ncertUrl || feedback !== 'idle') return;
+    setFeedback('confirming');
+    try {
+      await fetch(apiPath('/api/content/pdf/confirm'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          std,
+          subjectName,
+          chapterName: title,
+          ncertUrl: data.ncertUrl,
+        }),
+      });
+      setFeedback('confirmed');
+    } catch {
+      setFeedback('idle');
+    }
+  }, [data, std, subjectName, title, feedback]);
+
+  const handleReject = useCallback(async () => {
+    if (feedback !== 'idle') return;
+    setFeedback('rejecting');
+    try {
+      const res = await fetch(apiPath(`/api/content/pdf/subject?std=${std}&subjectName=${encodeURIComponent(subjectName)}`));
+      const json = await res.json();
+      const url = apiPath(`/api/content/pdf/proxy?url=${encodeURIComponent(json.ncertUrl)}`);
+      setSubjectPdfUrl(url);
+      setFeedback('rejected');
+    } catch {
+      setFeedback('idle');
+    }
+  }, [std, subjectName, feedback]);
+
+  // Which URL to show in the iframe
+  const activePdfUrl = feedback === 'rejected' && subjectPdfUrl
+    ? subjectPdfUrl
+    : data?.proxyUrl ?? null;
 
   return (
     <div className="p-6 lg:p-10 max-w-5xl mx-auto space-y-6">
@@ -86,13 +129,44 @@ function Chapter() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="font-extrabold flex items-center gap-2"><FileText className="w-4 h-4 text-primary"/>PDF Viewer</h2>
-            {data?.matchedChapter && data.matchedChapter !== title && (
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Showing closest match: <span className="font-bold text-foreground">{data.matchedChapter}</span>
+            {feedback === 'rejected' ? (
+              <p className="text-xs text-amber-500 mt-0.5 font-bold flex items-center gap-1">
+                <BookOpen className="w-3 h-3" /> Showing full {subjectName} textbook
               </p>
-            )}
+            ) : data?.matchedChapter && data.matchedChapter !== title ? (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Closest match: <span className="font-bold text-foreground">{data.matchedChapter}</span>
+              </p>
+            ) : null}
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            {/* Confirm / Reject feedback — only shown when PDF loaded and not yet decided */}
+            {!isLoading && !error && data?.proxyUrl && feedback === 'idle' && (
+              <>
+                <button
+                  onClick={handleConfirm}
+                  title="This is the correct PDF for this chapter"
+                  className="h-9 px-3 rounded-xl clay-sm bg-card flex items-center gap-1.5 text-xs font-bold text-emerald-500 hover:scale-105 active:scale-95 transition-transform"
+                >
+                  <ThumbsUp className="w-4 h-4" /> Correct
+                </button>
+                <button
+                  onClick={handleReject}
+                  title="Wrong PDF — show the full subject textbook instead"
+                  className="h-9 px-3 rounded-xl clay-sm bg-card flex items-center gap-1.5 text-xs font-bold text-destructive hover:scale-105 active:scale-95 transition-transform"
+                >
+                  <ThumbsDown className="w-4 h-4" /> Wrong
+                </button>
+              </>
+            )}
+            {feedback === 'confirming' || feedback === 'rejecting' ? (
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            ) : null}
+            {feedback === 'confirmed' && (
+              <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-500">
+                <CheckCircle2 className="w-4 h-4" /> Saved!
+              </span>
+            )}
             <button className="h-9 w-9 rounded-xl clay-sm bg-card flex items-center justify-center"><ZoomOut className="w-4 h-4"/></button>
             <button className="h-9 w-9 rounded-xl clay-sm bg-card flex items-center justify-center"><ZoomIn className="w-4 h-4"/></button>
           </div>
@@ -100,14 +174,15 @@ function Chapter() {
         <div className="aspect-[4/5] sm:aspect-[16/10] rounded-2xl clay-pressed bg-gradient-to-br from-muted to-card flex items-center justify-center relative overflow-hidden">
           {isLoading && <Loader2 className="w-8 h-8 animate-spin text-primary"/>}
           {error && <div className="text-destructive font-bold p-4 text-center">{(error as Error).message}</div>}
-          {!isLoading && !error && data?.proxyUrl && (
-            <iframe 
-              src={data.proxyUrl} 
-              className="w-full h-full border-0" 
-              title={data.matchedChapter || title}
+          {!isLoading && !error && activePdfUrl && (
+            <iframe
+              key={activePdfUrl}
+              src={activePdfUrl}
+              className="w-full h-full border-0"
+              title={feedback === 'rejected' ? `${subjectName} Textbook` : (data?.matchedChapter || title)}
             />
           )}
-          {!isLoading && !error && !data?.proxyUrl && (
+          {!isLoading && !error && !activePdfUrl && (
             <div className="text-muted-foreground font-bold p-4 text-center">PDF not available for this chapter.</div>
           )}
         </div>

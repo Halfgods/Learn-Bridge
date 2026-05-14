@@ -14,6 +14,26 @@ export function apiPath(path: string): string {
 }
 
 /**
+ * Parse JSON from an API response. Surfaces a clear error when the server
+ * returns HTML (SPA shell, 404 page) because /api is not proxied or Flask is down.
+ */
+export async function parseApiJson<T = unknown>(response: Response): Promise<T> {
+  const text = await response.text();
+  if (!text.trim()) return {} as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    const t = text.trimStart();
+    if (t.toLowerCase().startsWith("<!doctype") || t.toLowerCase().includes("<html")) {
+      throw new Error(
+        "The server returned a web page instead of JSON. Start the Flask API on port 5000 (so /api proxies correctly), or set VITE_API_URL to your backend base URL.",
+      );
+    }
+    throw new Error(`Invalid JSON from API: ${text.slice(0, 180).replace(/\s+/g, " ")}`);
+  }
+}
+
+/**
  * Scrapper (FastAPI on :8080) path. In dev, leave `VITE_SCRAPPER_URL` unset so
  * `/ytlinks` and `/shaalaalinks` are same-origin and Vite proxies them — avoids CORS.
  */

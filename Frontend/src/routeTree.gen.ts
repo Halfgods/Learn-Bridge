@@ -15,8 +15,17 @@ import { Route as AssessmentRouteImport } from './routes/assessment'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
+import { Route as AppSubjectsRouteImport } from './routes/app.subjects'
+import { Route as AppSettingsRouteImport } from './routes/app.settings'
+import { Route as AppQuizzesRouteImport } from './routes/app.quizzes'
+import { Route as AppPlannerRouteImport } from './routes/app.planner'
+import { Route as AppLeaderboardRouteImport } from './routes/app.leaderboard'
+import { Route as AppQuizzesIndexRouteImport } from './routes/app.quizzes.index'
 import { Route as AppSubjectSubjectIdRouteImport } from './routes/app.subject.$subjectId'
+import { Route as AppQuizzesNewRouteImport } from './routes/app.quizzes.new'
+import { Route as AppQuizzesQuizIdRouteImport } from './routes/app.quizzes.$quizId'
 import { Route as AppChapterChapterIdRouteImport } from './routes/app.chapter.$chapterId'
+import { Route as AppQuizzesQuizIdResultsRouteImport } from './routes/app.quizzes.$quizId.results'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -48,15 +57,60 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSubjectsRoute = AppSubjectsRouteImport.update({
+  id: '/subjects',
+  path: '/subjects',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppQuizzesRoute = AppQuizzesRouteImport.update({
+  id: '/quizzes',
+  path: '/quizzes',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPlannerRoute = AppPlannerRouteImport.update({
+  id: '/planner',
+  path: '/planner',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppLeaderboardRoute = AppLeaderboardRouteImport.update({
+  id: '/leaderboard',
+  path: '/leaderboard',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppQuizzesIndexRoute = AppQuizzesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppQuizzesRoute,
+} as any)
 const AppSubjectSubjectIdRoute = AppSubjectSubjectIdRouteImport.update({
   id: '/subject/$subjectId',
   path: '/subject/$subjectId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppQuizzesNewRoute = AppQuizzesNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => AppQuizzesRoute,
+} as any)
+const AppQuizzesQuizIdRoute = AppQuizzesQuizIdRouteImport.update({
+  id: '/$quizId',
+  path: '/$quizId',
+  getParentRoute: () => AppQuizzesRoute,
+} as any)
 const AppChapterChapterIdRoute = AppChapterChapterIdRouteImport.update({
   id: '/chapter/$chapterId',
   path: '/chapter/$chapterId',
   getParentRoute: () => AppRoute,
+} as any)
+const AppQuizzesQuizIdResultsRoute = AppQuizzesQuizIdResultsRouteImport.update({
+  id: '/results',
+  path: '/results',
+  getParentRoute: () => AppQuizzesQuizIdRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -65,18 +119,35 @@ export interface FileRoutesByFullPath {
   '/assessment': typeof AssessmentRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/app/leaderboard': typeof AppLeaderboardRoute
+  '/app/planner': typeof AppPlannerRoute
+  '/app/quizzes': typeof AppQuizzesRouteWithChildren
+  '/app/settings': typeof AppSettingsRoute
+  '/app/subjects': typeof AppSubjectsRoute
   '/app/': typeof AppIndexRoute
   '/app/chapter/$chapterId': typeof AppChapterChapterIdRoute
+  '/app/quizzes/$quizId': typeof AppQuizzesQuizIdRouteWithChildren
+  '/app/quizzes/new': typeof AppQuizzesNewRoute
   '/app/subject/$subjectId': typeof AppSubjectSubjectIdRoute
+  '/app/quizzes/': typeof AppQuizzesIndexRoute
+  '/app/quizzes/$quizId/results': typeof AppQuizzesQuizIdResultsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/assessment': typeof AssessmentRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/app/leaderboard': typeof AppLeaderboardRoute
+  '/app/planner': typeof AppPlannerRoute
+  '/app/settings': typeof AppSettingsRoute
+  '/app/subjects': typeof AppSubjectsRoute
   '/app': typeof AppIndexRoute
   '/app/chapter/$chapterId': typeof AppChapterChapterIdRoute
+  '/app/quizzes/$quizId': typeof AppQuizzesQuizIdRouteWithChildren
+  '/app/quizzes/new': typeof AppQuizzesNewRoute
   '/app/subject/$subjectId': typeof AppSubjectSubjectIdRoute
+  '/app/quizzes': typeof AppQuizzesIndexRoute
+  '/app/quizzes/$quizId/results': typeof AppQuizzesQuizIdResultsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -85,9 +156,18 @@ export interface FileRoutesById {
   '/assessment': typeof AssessmentRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/app/leaderboard': typeof AppLeaderboardRoute
+  '/app/planner': typeof AppPlannerRoute
+  '/app/quizzes': typeof AppQuizzesRouteWithChildren
+  '/app/settings': typeof AppSettingsRoute
+  '/app/subjects': typeof AppSubjectsRoute
   '/app/': typeof AppIndexRoute
   '/app/chapter/$chapterId': typeof AppChapterChapterIdRoute
+  '/app/quizzes/$quizId': typeof AppQuizzesQuizIdRouteWithChildren
+  '/app/quizzes/new': typeof AppQuizzesNewRoute
   '/app/subject/$subjectId': typeof AppSubjectSubjectIdRoute
+  '/app/quizzes/': typeof AppQuizzesIndexRoute
+  '/app/quizzes/$quizId/results': typeof AppQuizzesQuizIdResultsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -97,18 +177,35 @@ export interface FileRouteTypes {
     | '/assessment'
     | '/login'
     | '/signup'
+    | '/app/leaderboard'
+    | '/app/planner'
+    | '/app/quizzes'
+    | '/app/settings'
+    | '/app/subjects'
     | '/app/'
     | '/app/chapter/$chapterId'
+    | '/app/quizzes/$quizId'
+    | '/app/quizzes/new'
     | '/app/subject/$subjectId'
+    | '/app/quizzes/'
+    | '/app/quizzes/$quizId/results'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/assessment'
     | '/login'
     | '/signup'
+    | '/app/leaderboard'
+    | '/app/planner'
+    | '/app/settings'
+    | '/app/subjects'
     | '/app'
     | '/app/chapter/$chapterId'
+    | '/app/quizzes/$quizId'
+    | '/app/quizzes/new'
     | '/app/subject/$subjectId'
+    | '/app/quizzes'
+    | '/app/quizzes/$quizId/results'
   id:
     | '__root__'
     | '/'
@@ -116,9 +213,18 @@ export interface FileRouteTypes {
     | '/assessment'
     | '/login'
     | '/signup'
+    | '/app/leaderboard'
+    | '/app/planner'
+    | '/app/quizzes'
+    | '/app/settings'
+    | '/app/subjects'
     | '/app/'
     | '/app/chapter/$chapterId'
+    | '/app/quizzes/$quizId'
+    | '/app/quizzes/new'
     | '/app/subject/$subjectId'
+    | '/app/quizzes/'
+    | '/app/quizzes/$quizId/results'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -173,12 +279,68 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/subjects': {
+      id: '/app/subjects'
+      path: '/subjects'
+      fullPath: '/app/subjects'
+      preLoaderRoute: typeof AppSubjectsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/settings': {
+      id: '/app/settings'
+      path: '/settings'
+      fullPath: '/app/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/quizzes': {
+      id: '/app/quizzes'
+      path: '/quizzes'
+      fullPath: '/app/quizzes'
+      preLoaderRoute: typeof AppQuizzesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/planner': {
+      id: '/app/planner'
+      path: '/planner'
+      fullPath: '/app/planner'
+      preLoaderRoute: typeof AppPlannerRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/leaderboard': {
+      id: '/app/leaderboard'
+      path: '/leaderboard'
+      fullPath: '/app/leaderboard'
+      preLoaderRoute: typeof AppLeaderboardRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/quizzes/': {
+      id: '/app/quizzes/'
+      path: '/'
+      fullPath: '/app/quizzes/'
+      preLoaderRoute: typeof AppQuizzesIndexRouteImport
+      parentRoute: typeof AppQuizzesRoute
+    }
     '/app/subject/$subjectId': {
       id: '/app/subject/$subjectId'
       path: '/subject/$subjectId'
       fullPath: '/app/subject/$subjectId'
       preLoaderRoute: typeof AppSubjectSubjectIdRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/app/quizzes/new': {
+      id: '/app/quizzes/new'
+      path: '/new'
+      fullPath: '/app/quizzes/new'
+      preLoaderRoute: typeof AppQuizzesNewRouteImport
+      parentRoute: typeof AppQuizzesRoute
+    }
+    '/app/quizzes/$quizId': {
+      id: '/app/quizzes/$quizId'
+      path: '/$quizId'
+      fullPath: '/app/quizzes/$quizId'
+      preLoaderRoute: typeof AppQuizzesQuizIdRouteImport
+      parentRoute: typeof AppQuizzesRoute
     }
     '/app/chapter/$chapterId': {
       id: '/app/chapter/$chapterId'
@@ -187,16 +349,60 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppChapterChapterIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/quizzes/$quizId/results': {
+      id: '/app/quizzes/$quizId/results'
+      path: '/results'
+      fullPath: '/app/quizzes/$quizId/results'
+      preLoaderRoute: typeof AppQuizzesQuizIdResultsRouteImport
+      parentRoute: typeof AppQuizzesQuizIdRoute
+    }
   }
 }
 
+interface AppQuizzesQuizIdRouteChildren {
+  AppQuizzesQuizIdResultsRoute: typeof AppQuizzesQuizIdResultsRoute
+}
+
+const AppQuizzesQuizIdRouteChildren: AppQuizzesQuizIdRouteChildren = {
+  AppQuizzesQuizIdResultsRoute: AppQuizzesQuizIdResultsRoute,
+}
+
+const AppQuizzesQuizIdRouteWithChildren =
+  AppQuizzesQuizIdRoute._addFileChildren(AppQuizzesQuizIdRouteChildren)
+
+interface AppQuizzesRouteChildren {
+  AppQuizzesQuizIdRoute: typeof AppQuizzesQuizIdRouteWithChildren
+  AppQuizzesNewRoute: typeof AppQuizzesNewRoute
+  AppQuizzesIndexRoute: typeof AppQuizzesIndexRoute
+}
+
+const AppQuizzesRouteChildren: AppQuizzesRouteChildren = {
+  AppQuizzesQuizIdRoute: AppQuizzesQuizIdRouteWithChildren,
+  AppQuizzesNewRoute: AppQuizzesNewRoute,
+  AppQuizzesIndexRoute: AppQuizzesIndexRoute,
+}
+
+const AppQuizzesRouteWithChildren = AppQuizzesRoute._addFileChildren(
+  AppQuizzesRouteChildren,
+)
+
 interface AppRouteChildren {
+  AppLeaderboardRoute: typeof AppLeaderboardRoute
+  AppPlannerRoute: typeof AppPlannerRoute
+  AppQuizzesRoute: typeof AppQuizzesRouteWithChildren
+  AppSettingsRoute: typeof AppSettingsRoute
+  AppSubjectsRoute: typeof AppSubjectsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppChapterChapterIdRoute: typeof AppChapterChapterIdRoute
   AppSubjectSubjectIdRoute: typeof AppSubjectSubjectIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppLeaderboardRoute: AppLeaderboardRoute,
+  AppPlannerRoute: AppPlannerRoute,
+  AppQuizzesRoute: AppQuizzesRouteWithChildren,
+  AppSettingsRoute: AppSettingsRoute,
+  AppSubjectsRoute: AppSubjectsRoute,
   AppIndexRoute: AppIndexRoute,
   AppChapterChapterIdRoute: AppChapterChapterIdRoute,
   AppSubjectSubjectIdRoute: AppSubjectSubjectIdRoute,
