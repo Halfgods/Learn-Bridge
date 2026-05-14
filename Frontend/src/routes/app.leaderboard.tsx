@@ -53,7 +53,7 @@ function LeaderboardPage() {
         <h1 className="text-3xl font-black flex items-center gap-3">
           <Medal className="w-9 h-9 text-clay-yellow" /> Leaderboard
         </h1>
-        <p className="text-muted-foreground mt-1">Top learners by XP this term (demo data — wire to your analytics later).</p>
+        <p className="text-muted-foreground mt-1">Top learners ranked by quiz scores.</p>
       </header>
 
       {isLoading && (

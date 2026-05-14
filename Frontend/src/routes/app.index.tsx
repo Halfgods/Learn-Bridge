@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
 import {
   Calculator,
   Beaker,
@@ -12,9 +12,11 @@ import {
   Trophy,
   Clock,
   Search,
+  X,
   GraduationCap,
   KeyRound,
   CheckCircle2,
+  Loader2,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
@@ -83,6 +85,17 @@ function Dashboard() {
   const [teacherDialog, setTeacherDialog] = useState(false);
   const [teacherCode, setTeacherCode] = useState("");
   const [teacherErr, setTeacherErr] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dismissed, setDismissed] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("dismissed-notifs") || "[]"); } catch { return []; }
+  });
+
+  const dismissNotif = (quizId: string) => {
+    const next = [...dismissed, quizId];
+    setDismissed(next);
+    localStorage.setItem("dismissed-notifs", JSON.stringify(next));
+  };
 
   const todayLabel = format(new Date(), "EEEE, MMMM d");
 
@@ -193,7 +206,41 @@ function Dashboard() {
   const sortedTeacherSchedule = [...teacherQuizzes].sort(
     (a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime(),
   );
-  const pendingNotifications = studentAssignments.filter((a) => !a.completed);
+  const pendingNotifications = studentAssignments.filter((a) => !a.completed && !dismissed.includes(a.quizId));
+
+  const allChaptersQ = useQuery({
+    queryKey: ["all-chapters", gradeForCurriculum],
+    queryFn: async () => {
+      const res = await fetch(apiPath(`/api/curriculum/class/${gradeForCurriculum}/all-chapters`));
+      const data = await parseApiJson<{ chapters?: { subjectName: string; chapterName: string }[] }>(res);
+      if (!res.ok) throw new Error("Failed");
+      return data.chapters ?? [];
+    },
+    enabled: gradeForCurriculum != null,
+  });
+
+  function computeLCS(t: string, q: string): number {
+    if (!q) return 0;
+    const text = t.toLowerCase();
+    const query = q.toLowerCase();
+    const m = text.length;
+    const n = query.length;
+    const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        if (text[i - 1] === query[j - 1]) {
+          dp[i][j] = dp[i - 1][j - 1] + 1;
+        } else {
+          dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+        }
+      }
+    }
+    return dp[m][n];
+  }
+
+  const searchResults = searchQuery.trim()
+    ? (allChaptersQ.data || []).filter((ch) => computeLCS(ch.chapterName, searchQuery.trim()) === searchQuery.trim().length)
+    : [];
 
   return (
     <div className="p-6 lg:p-10 max-w-6xl mx-auto space-y-8">
@@ -211,7 +258,7 @@ function Dashboard() {
               <KeyRound className="w-4 h-4" /> Teacher access
             </ClayButton>
           )}
-          <button type="button" className="h-12 w-12 rounded-2xl clay-sm bg-card flex items-center justify-center">
+          <button type="button" onClick={() => { setSearchOpen(true); setSearchQuery(""); }} className="h-12 w-12 rounded-2xl clay-sm bg-card flex items-center justify-center">
             <Search className="w-5 h-5" />
           </button>
           {!isTeacher && (
@@ -238,11 +285,11 @@ function Dashboard() {
                   ) : (
                     <ul className="divide-y divide-border">
                       {pendingNotifications.map((a) => (
-                        <li key={a.quizId}>
+                        <li key={a.quizId} className="relative">
                           <Link
                             to="/app/quizzes/$quizId"
                             params={{ quizId: a.quizId }}
-                            className="block p-4 hover:bg-muted/60 transition-colors"
+                            className="block p-4 pr-16 hover:bg-muted/60 transition-colors"
                           >
                             <div className="font-extrabold text-sm">{a.title}</div>
                             <div className="text-xs text-muted-foreground font-bold mt-1">
@@ -253,6 +300,12 @@ function Dashboard() {
                               Due {format(parseISO(a.deadline), "MMM d, h:mm a")}
                             </div>
                           </Link>
+                          <button
+                            onClick={(e) => { e.preventDefault(); dismissNotif(a.quizId); }}
+                            className="absolute top-3 right-3 h-7 px-2 rounded-lg text-[10px] font-bold text-muted-foreground hover:text-emerald-500 hover:bg-emerald-500/10 transition-colors"
+                          >
+                            Done
+                          </button>
                         </li>
                       ))}
                     </ul>
@@ -466,6 +519,62 @@ function Dashboard() {
           )}
         </div>
       </section>
+
+      {/* Search dialog */}
+      <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
+        <DialogContent className="sm:rounded-2xl border-0 clay-lg max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-black">Search chapters</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="clay-pressed bg-card rounded-2xl px-4 h-12 flex items-center gap-3">
+              <Search className="w-4 h-4 text-muted-foreground shrink-0" />
+              <input
+                placeholder="Type a chapter name…"
+                className="bg-transparent outline-none flex-1 font-bold text-sm"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                autoFocus
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery("")} className="shrink-0 text-muted-foreground hover:text-foreground">
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            {allChaptersQ.isLoading && (
+              <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+            )}
+            {!searchQuery.trim() && (
+              <p className="text-sm text-muted-foreground font-bold text-center py-6">Start typing to search chapters across all subjects.</p>
+            )}
+            {searchQuery.trim() && searchResults.length === 0 && !allChaptersQ.isLoading && (
+              <p className="text-sm text-muted-foreground font-bold text-center py-6">No chapters match your search.</p>
+            )}
+            {searchResults.length > 0 && (
+              <ul className="max-h-72 overflow-y-auto space-y-1">
+                {searchResults.map((ch) => (
+                  <li key={`${ch.subjectName}-${ch.chapterName}`}>
+                    <Link
+                      to="/app/chapter/$chapterId"
+                      params={{ chapterId: encodeURIComponent(ch.chapterName) }}
+                      search={{ subjectName: ch.subjectName, std: gradeForCurriculum }}
+                      onClick={() => setSearchOpen(false)}
+                      className="flex items-center gap-3 p-3 rounded-2xl hover:bg-muted transition-colors"
+                    >
+                      <BookOpen className="w-4 h-4 text-primary shrink-0" />
+                      <div>
+                        <div className="font-extrabold text-sm">{ch.chapterName}</div>
+                        <div className="text-xs text-muted-foreground font-bold">{ch.subjectName}</div>
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

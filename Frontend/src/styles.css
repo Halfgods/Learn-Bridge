@@ -294,6 +294,11 @@
   .glow-purple { box-shadow: var(--shadow-glow-purple); }
   .glow-cyan   { box-shadow: var(--shadow-glow-cyan); }
 
+  /* ── Dark-mode-safe text on gradients ── */
+  .dark .text-amber-900 { color: oklch(0.88 0.18 95); }
+  .dark .text-orange-900 { color: oklch(0.88 0.16 65); }
+  .dark .text-emerald-900 { color: oklch(0.88 0.16 145); }
+
   /* ── Background blobs ── */
   .blob {
     position: absolute;

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Plus, Trash2, Loader2 } from "lucide-react";
+import { Plus, Trash2, Loader2, CalendarDays } from "lucide-react";
 import { ClayButton } from "@/components/ClayButton";
 import { ClayInput } from "@/components/ClayInput";
 import { apiPath, parseApiJson } from "@/lib/api";
@@ -138,12 +138,15 @@ function NewQuizPage() {
         </div>
         <div>
           <label className="text-sm font-bold text-foreground/80 ml-2">Deadline</label>
-          <input
-            type="datetime-local"
-            className="mt-2 w-full h-12 rounded-2xl border-2 border-muted bg-background px-4 font-bold"
-            value={deadline}
-            onChange={(e) => setDeadline(e.target.value)}
-          />
+          <div className="mt-2 clay-pressed bg-card rounded-2xl px-4 h-12 flex items-center gap-2">
+            <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
+            <input
+              type="datetime-local"
+              className="bg-transparent outline-none flex-1 font-bold text-sm [color-scheme:dark] dark:[color-scheme:dark]"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+            />
+          </div>
         </div>
       </div>
 

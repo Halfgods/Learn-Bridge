@@ -244,6 +244,23 @@ def get_chapters(std, subject_name):
         return jsonify({"chapters": chapters}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+@app.route('/api/curriculum/class/<int:std>/all-chapters', methods=['GET'])
+def get_all_chapters(std):
+    try:
+        docs = list(curriculum_collection.find({'std': std}, {'_id': 0, 'subjectName': 1, 'chapters.chapterName': 1}))
+        chapters = []
+        for doc in docs:
+            subject = doc.get('subjectName', '')
+            for ch in (doc.get('chapters') or []):
+                chapters.append({
+                    'subjectName': subject,
+                    'chapterName': ch.get('chapterName', ''),
+                })
+        return jsonify({"chapters": chapters}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ==========================================
 # CONTENT ROUTES
 # ==========================================
@@ -502,7 +519,47 @@ def get_related_concepts():
     std = request.args.get('std', type=int)
     subject_name = request.args.get('subjectName')
     chapter_name = request.args.get('chapterName')
-    return jsonify({"message": f"Related concepts for chapter {chapter_name}"}), 501
+    if not all([std, subject_name, chapter_name]):
+        return jsonify({"error": "Missing params"}), 400
+    try:
+        subject_filter = re.compile(f'^{re.escape(subject_name)}$', re.I)
+        curriculum = curriculum_collection.find_one(
+            {'std': std, 'subjectName': subject_filter},
+            {'_id': 0, 'chapters.chapterName': 1}
+        )
+        if not curriculum:
+            return jsonify({"concepts": []}), 200
+        all_chapters = [ch.get('chapterName', '') for ch in (curriculum.get('chapters') or []) if ch.get('chapterName')]
+        center_norm = chapter_name.lower().strip()
+        related = [c for c in all_chapters if c.lower().strip() != center_norm]
+        import random
+        random.shuffle(related)
+        related = related[:6]
+        nodes = []
+        cx, cy = 50, 50
+        gradients = [
+            "gradient-cyan text-white",
+            "gradient-yellow text-amber-900",
+            "gradient-peach text-orange-900",
+            "gradient-mint text-emerald-900",
+            "gradient-primary text-white",
+            "gradient-cyan text-white",
+        ]
+        import math
+        for i, name in enumerate(related):
+            angle = (2 * math.pi * i) / len(related) - math.pi / 2
+            r = 32
+            x = round(cx + r * math.cos(angle), 1)
+            y = round(cy + r * math.sin(angle), 1)
+            nodes.append({
+                "name": name,
+                "x": x,
+                "y": y,
+                "color": gradients[i % len(gradients)],
+            })
+        return jsonify({"concepts": nodes}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
@@ -513,15 +570,83 @@ def get_related_concepts():
 def get_leaderboard(current_user):
     if current_user.get("role") != "teacher":
         return jsonify({"error": "Teachers only"}), 403
-    # Demo rows; real product would aggregate progress from student accounts.
-    rows = [
-        {"rank": 1, "name": "Riya Sharma", "xp": 3120, "lessons": 48},
-        {"rank": 2, "name": "Arjun Mehta", "xp": 2980, "lessons": 44},
-        {"rank": 3, "name": "Sara Khan", "xp": 2650, "lessons": 39},
-        {"rank": 4, "name": "Dev Patel", "xp": 2410, "lessons": 36},
-        {"rank": 5, "name": "Ananya Iyer", "xp": 2280, "lessons": 33},
+    pipeline = [
+        {"$group": {
+            "_id": "$studentEmail",
+            "studentName": {"$first": "$studentName"},
+            "xp": {"$sum": "$score"},
+            "quizzesDone": {"$sum": 1},
+        }},
+        {"$sort": {"xp": -1}},
+        {"$limit": 100},
     ]
+    raw = list(quiz_attempts_collection.aggregate(pipeline))
+    rows = []
+    for i, r in enumerate(raw):
+        rows.append({
+            "rank": i + 1,
+            "name": r.get("studentName") or r["_id"],
+            "xp": r.get("xp", 0),
+            "lessons": r.get("quizzesDone", 0),
+        })
     return jsonify({"rows": rows}), 200
+
+
+@app.route("/api/student/achievements", methods=["GET"])
+@token_required
+def student_achievements(current_user):
+    if current_user.get("role") != "student":
+        return jsonify({"error": "Students only"}), 403
+    attempts = list(quiz_attempts_collection.find(
+        {"studentEmail": current_user["email"]},
+        {"_id": 0},
+    ).sort("submittedAt", -1))
+    total = len(attempts)
+    if total == 0:
+        return jsonify({
+            "totalQuizzes": 0,
+            "averageScore": 0,
+            "bestScore": 0,
+            "totalScore": 0,
+            "maxScore": 0,
+            "subjects": [],
+            "recent": [],
+        }), 200
+    best = max(attempts, key=lambda a: (a.get("score") or 0) / max(a.get("total") or 1, 1))
+    subjects = set()
+    for att in attempts:
+        qid = att.get("quizId")
+        if qid:
+            quiz = teacher_quizzes_collection.find_one({"quizId": qid}, {"_id": 0, "subject": 1})
+            if quiz and quiz.get("subject"):
+                subjects.add(quiz["subject"])
+    recent = []
+    for att in attempts[:5]:
+        qid = att.get("quizId")
+        title = ""
+        if qid:
+            quiz = teacher_quizzes_collection.find_one({"quizId": qid}, {"_id": 0, "title": 1})
+            if quiz:
+                title = quiz.get("title") or ""
+        recent.append({
+            "quizId": qid,
+            "title": title,
+            "score": att.get("score"),
+            "total": att.get("total"),
+            "submittedAt": _iso_dt(att.get("submittedAt")),
+        })
+    total_score = sum(a.get("score") or 0 for a in attempts)
+    max_possible = sum(a.get("total") or 0 for a in attempts)
+    return jsonify({
+        "totalQuizzes": total,
+        "averageScore": round(total_score / max_possible * 100, 1) if max_possible else 0,
+        "bestScore": best.get("score"),
+        "bestTotal": best.get("total"),
+        "totalScore": total_score,
+        "maxScore": max_possible,
+        "subjects": sorted(subjects),
+        "recent": recent,
+    }), 200
 
 
 def _parse_deadline_iso(raw):
@@ -824,12 +949,215 @@ def list_quiz_attempts_for_teacher(current_user, quiz_id):
     if not own:
         return jsonify({"error": "Not found"}), 404
     rows = list(
-        quiz_attempts_collection.find({"quizId": quiz_id}, {"_id": 0}).sort("submittedAt", -1).limit(500)
+        quiz_attempts_collection.find({"quizId": quiz_id}, {"_id": 0}).limit(500)
     )
+    rows.sort(key=lambda r: (-(r.get("score") or 0) / max(r.get("total") or 1, 1)))
     for r in rows:
         if isinstance(r.get("submittedAt"), datetime.datetime):
             r["submittedAt"] = _iso_dt(r.get("submittedAt"))
     return jsonify({"attempts": rows}), 200
+
+
+# ==========================================
+# KNOWLEDGE GRAPH ROUTES
+# ==========================================
+@app.route('/api/knowledge-graph/subjects', methods=['GET'])
+def kg_subjects():
+    std = request.args.get('std', type=int)
+    board = request.args.get('board', 'CBSE')
+    if not std:
+        return jsonify({"error": "std is required"}), 400
+    try:
+        subjects = curriculum_collection.distinct('subjectName', {'std': std})
+        return jsonify(subjects), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/knowledge-graph', methods=['GET'])
+def kg_graph():
+    std = request.args.get('std', type=int)
+    board = request.args.get('board', 'CBSE')
+    subject = request.args.get('subject')
+    if not std or not subject:
+        return jsonify({"error": "std and subject are required"}), 400
+    try:
+        subject_filter = re.compile(f'^{re.escape(subject)}$', re.I)
+        curriculum = curriculum_collection.find_one(
+            {'std': std, 'subjectName': subject_filter},
+            {'_id': 0, 'chapters': 1}
+        )
+        if not curriculum or not curriculum.get('chapters'):
+            return jsonify({"nodes": []}), 200
+
+        nodes = []
+        for i, ch in enumerate(curriculum['chapters']):
+            ch_name = ch.get('chapterName', '')
+            if not ch_name:
+                continue
+            raw_prereqs = ch.get('prerequisites')
+            if not raw_prereqs:
+                raw_prereqs = [curriculum['chapters'][i - 1]['chapterName']] if i > 0 else []
+            elif isinstance(raw_prereqs, str):
+                raw_prereqs = [raw_prereqs]
+            raw_concepts = ch.get('concepts')
+            if not raw_concepts:
+                words = re.findall(r'[A-Za-z]+', ch_name)
+                raw_concepts = list(dict.fromkeys(w for w in words if len(w) > 2))[:6]
+            elif isinstance(raw_concepts, str):
+                raw_concepts = [raw_concepts]
+            nodes.append({
+                "chapterName": ch_name,
+                "concepts": raw_concepts,
+                "prerequisites": raw_prereqs,
+                "difficulty": ch.get('difficulty', 0),
+            })
+        return jsonify({"nodes": nodes}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/knowledge-graph/gaps', methods=['GET'])
+@token_required
+def kg_gaps(current_user):
+    subject = request.args.get('subject')
+    if not subject:
+        return jsonify({"error": "subject is required"}), 400
+    try:
+        grade = current_user.get('grade')
+        board = _norm_board(current_user.get('board'))
+        if grade is None:
+            return jsonify({"error": "User grade not set"}), 400
+
+        subject_filter = re.compile(f'^{re.escape(subject)}$', re.I)
+        curriculum = curriculum_collection.find_one(
+            {'std': int(grade), 'subjectName': subject_filter},
+            {'_id': 0, 'chapters': 1}
+        )
+        if not curriculum or not curriculum.get('chapters'):
+            return jsonify({"totalNodes": 0, "masteredNodes": 0, "weakChapters": [], "prerequisiteGaps": []}), 200
+
+        chapters = curriculum['chapters']
+        total_nodes = len(chapters)
+
+        attempts = list(quiz_attempts_collection.find(
+            {"studentEmail": current_user["email"]},
+            {"_id": 0, "quizId": 1, "score": 1, "total": 1}
+        ))
+        quiz_ids = [a["quizId"] for a in attempts if "quizId" in a]
+        quiz_map = {}
+        if quiz_ids:
+            teacher_quizzes_collection.find(
+                {"quizId": {"$in": quiz_ids}},
+                {"_id": 0, "quizId": 1, "subject": 1}
+            )
+            for q in teacher_quizzes_collection.find(
+                {"quizId": {"$in": quiz_ids}},
+                {"_id": 0, "quizId": 1, "subject": 1}
+            ):
+                quiz_map[q["quizId"]] = q.get("subject", "")
+
+        chapter_scores = {}
+        for att in attempts:
+            qid = att.get("quizId")
+            if quiz_map.get(qid) != subject:
+                continue
+            pct = (att.get("score") or 0) / max(att.get("total") or 1, 1) * 100
+            for ch in chapters:
+                ch_name = ch.get("chapterName", "")
+                if ch_name not in chapter_scores or pct > chapter_scores[ch_name]:
+                    chapter_scores[ch_name] = pct
+
+        mastered = 0
+        weak_chapters = []
+        chapter_name_set = {ch.get("chapterName", "") for ch in chapters}
+
+        for ch in chapters:
+            ch_name = ch.get("chapterName", "")
+            score = chapter_scores.get(ch_name, 0)
+            if score >= 70:
+                mastered += 1
+            elif 0 < score < 40 or ch_name not in chapter_scores:
+                weak_chapters.append({"chapterName": ch_name})
+
+        prereq_gaps = []
+        for ch in chapters:
+            ch_name = ch.get("chapterName", "")
+            raw_prereqs = ch.get("prerequisites")
+            prereqs = raw_prereqs if isinstance(raw_prereqs, list) else ([raw_prereqs] if isinstance(raw_prereqs, str) else [])
+            if not prereqs and curriculum['chapters'].index(ch) > 0:
+                prev = curriculum['chapters'][curriculum['chapters'].index(ch) - 1]
+                prereqs = [prev.get("chapterName", "")]
+            for prereq in prereqs:
+                if prereq in chapter_name_set:
+                    prereq_score = chapter_scores.get(prereq, 0)
+                    if prereq_score < 40:
+                        prereq_gaps.append({
+                            "recommendation": f"Strengthen \"{prereq}\" before attempting \"{ch_name}\"",
+                            "missingPrerequisite": prereq,
+                            "prereqScore": round(prereq_score),
+                        })
+
+        prereq_gaps.sort(key=lambda g: g["prereqScore"])
+        return jsonify({
+            "totalNodes": total_nodes,
+            "masteredNodes": mastered,
+            "weakChapters": weak_chapters,
+            "prerequisiteGaps": prereq_gaps,
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ==========================================
+# PROGRESS ROUTES
+# ==========================================
+@app.route('/api/progress', methods=['GET'])
+@token_required
+def get_student_progress(current_user):
+    """Return quiz progress per chapter for the current student."""
+    if current_user.get("role") != "student":
+        return jsonify([]), 200
+    try:
+        grade = current_user.get("grade")
+        board = _norm_board(current_user.get("board"))
+        if grade is None:
+            return jsonify([]), 200
+
+        attempts = list(quiz_attempts_collection.find(
+            {"studentEmail": current_user["email"]},
+            {"_id": 0, "quizId": 1, "score": 1, "total": 1}
+        ))
+        quiz_ids = [a["quizId"] for a in attempts if "quizId" in a]
+        if not quiz_ids:
+            return jsonify([]), 200
+
+        quiz_info = {}
+        for q in teacher_quizzes_collection.find(
+            {"quizId": {"$in": quiz_ids}},
+            {"_id": 0, "quizId": 1, "subject": 1, "title": 1}
+        ):
+            quiz_info[q["quizId"]] = {
+                "subject": q.get("subject", ""),
+                "title": q.get("title", q["quizId"]),
+            }
+
+        result = []
+        for att in attempts:
+            qid = att.get("quizId")
+            info = quiz_info.get(qid, {"subject": "General", "title": qid})
+            result.append({
+                "chapterName": info["title"],
+                "subjectName": info["subject"],
+                "quizScore": att.get("score", 0),
+                "totalQuestions": att.get("total", 0),
+                "isCompleted": True,
+            })
+
+        result.sort(key=lambda r: r["subjectName"])
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================

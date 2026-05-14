@@ -1,6 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Settings } from "lucide-react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Settings, LogOut } from "lucide-react";
 import { useMe } from "@/hooks/useMe";
+import { ClayButton } from "@/components/ClayButton";
 
 export const Route = createFileRoute("/app/settings")({
   head: () => ({ meta: [{ title: "Settings — Nova Learn" }] }),
@@ -9,6 +10,14 @@ export const Route = createFileRoute("/app/settings")({
 
 function SettingsPage() {
   const { data: user } = useMe();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("theme");
+    navigate({ to: "/" });
+  };
+
   return (
     <div className="p-6 lg:p-10 max-w-xl mx-auto space-y-6">
       <header>
@@ -42,6 +51,14 @@ function SettingsPage() {
           </div>
         )}
       </div>
+
+      <ClayButton
+        variant="white"
+        className="w-full !text-destructive !border-destructive/30"
+        onClick={handleLogout}
+      >
+        <LogOut className="w-4 h-4" /> Log out
+      </ClayButton>
     </div>
   );
 }

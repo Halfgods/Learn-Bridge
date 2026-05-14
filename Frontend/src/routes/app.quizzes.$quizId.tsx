@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Loader2, PartyPopper } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 import { format, isPast, parseISO } from "date-fns";
 import { apiPath, parseApiJson } from "@/lib/api";
 import { ClayButton } from "@/components/ClayButton";
@@ -104,18 +104,8 @@ function TakeQuizPage() {
   }
 
   if (done && result) {
-    return (
-      <div className="p-6 lg:p-10 max-w-xl mx-auto space-y-6 text-center">
-        <PartyPopper className="w-16 h-16 mx-auto text-clay-yellow" />
-        <h1 className="text-3xl font-black">{data.myAttempt ? "Submitted" : "Nice work!"}</h1>
-        <p className="text-muted-foreground font-bold">
-          You scored {result.score} / {result.total}
-        </p>
-        <ClayButton size="lg" className="w-full" onClick={() => navigate({ to: "/app/quizzes" })}>
-          Back to quizzes
-        </ClayButton>
-      </div>
-    );
+    navigate({ to: "/app" });
+    return null;
   }
 
   const cur = qs[idx];

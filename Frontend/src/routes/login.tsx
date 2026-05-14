@@ -68,7 +68,7 @@ function Login() {
                 onClick={() => setAccountType("teacher")}
                 className={cn(
                   "h-14 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all clay-sm",
-                  accountType === "teacher" ? "gradient-cyan text-white" : "bg-card hover:-translate-y-0.5",
+                  accountType === "teacher" ? "gradient-cyan text-white glow-cyan" : "bg-card hover:-translate-y-0.5",
                 )}
               >
                 <GraduationCap className="w-4 h-4" /> Teacher

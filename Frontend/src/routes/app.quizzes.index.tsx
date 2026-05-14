@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Trophy, Clock, ArrowRight, Loader2, BarChart3 } from "lucide-react";
+import { Plus, Trophy, Clock, ArrowRight, Loader2, BarChart3, Medal, Sparkles, Brain, BookOpen } from "lucide-react";
 import { format, isPast, parseISO } from "date-fns";
 import { apiPath, parseApiJson } from "@/lib/api";
 import { useMe } from "@/hooks/useMe";
@@ -22,6 +22,17 @@ type QuizRow = {
   completed?: boolean;
   score?: number | null;
   total?: number | null;
+};
+
+type Achievements = {
+  totalQuizzes: number;
+  averageScore: number;
+  bestScore: number;
+  bestTotal: number;
+  totalScore: number;
+  maxScore: number;
+  subjects: string[];
+  recent: { quizId: string; title: string; score: number; total: number; submittedAt: string }[];
 };
 
 function QuizzesHome() {
@@ -57,6 +68,18 @@ function QuizzesHome() {
     enabled: !!user && !isTeacher,
   });
 
+  const achievementsQ = useQuery({
+    queryKey: ["student-achievements"],
+    queryFn: async () => {
+      const token = localStorage.getItem("token");
+      const res = await fetch(apiPath("/api/student/achievements"), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return parseApiJson<Achievements>(res);
+    },
+    enabled: !!user && !isTeacher,
+  });
+
   if (meLoading || !user) {
     return (
       <div className="p-10 flex justify-center">
@@ -86,6 +109,24 @@ function QuizzesHome() {
           </ClayButton>
         )}
       </div>
+
+      {/* Student achievements */}
+      {!isTeacher && achievementsQ.data && achievementsQ.data.totalQuizzes > 0 && (
+        <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { icon: Trophy, label: "Completed", value: achievementsQ.data.totalQuizzes, color: "text-clay-yellow" },
+            { icon: Brain, label: "Avg Score", value: `${achievementsQ.data.averageScore}%`, color: "text-cyan-400" },
+            { icon: Medal, label: "Best", value: `${achievementsQ.data.bestScore}/${achievementsQ.data.bestTotal}`, color: "text-emerald-400" },
+            { icon: BookOpen, label: "Subjects", value: achievementsQ.data.subjects.length, color: "text-primary" },
+          ].map((s) => (
+            <div key={s.label} className="clay-lg bg-card p-4 text-center space-y-1">
+              <s.icon className={cn("w-5 h-5 mx-auto", s.color)} />
+              <div className="text-2xl font-black">{s.value}</div>
+              <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">{s.label}</div>
+            </div>
+          ))}
+        </section>
+      )}
 
       {pending && (
         <div className="flex justify-center py-16">

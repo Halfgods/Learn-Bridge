@@ -106,17 +106,17 @@ function Signup() {
                     onClick={() => setAccountType("student")}
                     className={cn(
                       "h-14 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all clay-sm",
-                      accountType === "student" ? "gradient-primary text-white glow-purple" : "bg-card hover:-translate-y-0.5",
-                    )}
-                  >
-                    <School className="w-4 h-4" /> Student
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAccountType("teacher")}
-                    className={cn(
-                      "h-14 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all clay-sm",
-                      accountType === "teacher" ? "gradient-cyan text-white" : "bg-card hover:-translate-y-0.5",
+                  accountType === "student" ? "gradient-primary text-white glow-purple" : "bg-card hover:-translate-y-0.5",
+                )}
+              >
+                <School className="w-4 h-4" /> Student
+              </button>
+              <button
+                type="button"
+                onClick={() => setAccountType("teacher")}
+                className={cn(
+                  "h-14 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all clay-sm",
+                  accountType === "teacher" ? "gradient-cyan text-white glow-cyan" : "bg-card hover:-translate-y-0.5",
                     )}
                   >
                     <GraduationCap className="w-4 h-4" /> Teacher
@@ -163,7 +163,7 @@ function Signup() {
                       onClick={() => setBoard(b)}
                       className={cn(
                         "h-14 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all",
-                        board === b ? "gradient-cyan text-white" : "clay-sm bg-card hover:-translate-y-0.5",
+                        board === b ? "gradient-cyan text-white glow-cyan" : "clay-sm bg-card hover:-translate-y-0.5",
                       )}
                     >
                       <GraduationCap className="w-4 h-4" /> {b}

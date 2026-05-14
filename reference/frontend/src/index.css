@@ -1,0 +1,402 @@
+/*
+ * ═══════════════════════════════════════════════════════════════
+ *   TUTORIAL.AI — COLOUR & EMOTION DESIGN SYSTEM
+ * ═══════════════════════════════════════════════════════════════
+ *
+ *   EMOTION STRATEGY
+ *   ────────────────
+ *   WELCOMING  → warm cream backdrop, soft shadows, friendly
+ *                rounded corners (16px everywhere)
+ *   CONFIDENT  → high-contrast text, bold weights used
+ *                deliberately (not shouty-uppercase-everywhere)
+ *   PLAYFUL    → rounded-2xl on all surfaces, bounce & float
+ *                micro-animations, subject colour pills
+ *   CLEAR      → generous whitespace, colour-coded subjects,
+ *                consistent shadow language (shadow-lg only)
+ *
+ *   SUBJECT PALETTE
+ *   ───────────────
+ *   Mathematics  → Deep Blue    #3B82F6   (focus, logic)
+ *   Science      → Emerald      #10B981   (growth, nature)
+ *   English      → Coral Red    #EF4444   (energy, expression)
+ *   Hindi        → Orange       #F97316   (warmth, culture)
+ *   Social Sci.  → Purple       #8B5CF6   (wisdom, creativity)
+ *   EVS          → Teal         #14B8A6   (balance, environment)
+ *
+ *   TYPOGRAPHY HIERARCHY
+ *   ────────────────────
+ *   Page titles   → font-black  text-3xl  lowercase
+ *   Section heads → font-bold   text-lg
+ *   Body          → font-medium text-base
+ *   Labels/badges → font-bold   text-xs
+ *
+ *   VISUAL RULES
+ *   ────────────
+ *   1. rounded-2xl (16px) everywhere — cards, buttons, inputs,
+ *      badges, modals, icon wrappers
+ *   2. shadow-lg only — no hard shadow-[…] or shadow-xl
+ *      (exception: hover state uses shadow-xl)
+ *   3. Cards lift on hover:  hover:-translate-y-1 hover:shadow-xl
+ *   4. Gradient backgrounds → hero / celebration sections ONLY
+ *      (never on cards, buttons, or badges)
+ *   5. Flat colours on buttons — no gradients
+ *   6. Icons → lucide-react or inline SVG wrappers (.icon-bub)
+ *      (no raw emoji as decoration)
+ *
+ *   MICRO-INTERACTIONS
+ *   ──────────────────
+ *   Buttons  → active:scale-95
+ *   Cards    → hover:-translate-y-1 hover:shadow-xl
+ *   Success  → .success-glow (green ring pulse, 600ms)
+ *   Error    → .shake          (horizontal shake, 500ms)
+ *
+ *   MIGRATION NOTES
+ *   ───────────────
+ *   - All old class names preserved for backward compat
+ *     (card-bub, btn-bub-*, badge-bub-*, etc.)
+ *   - New subject classes:  .subj-math / .subj-pill-math / .btn-subj-math
+ *   - New typography classes: .title-bub / .section-title-bub / .body-bub / .label-bub
+ *   - Install lucide-react for icons:  npm install lucide-react
+ *   - Wrap icons in .icon-bub / .icon-bub-sm / .icon-bub-lg
+ *
+ * ═══════════════════════════════════════════════════════════════
+ */
+
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+@plugin "daisyui";
+
+@plugin "daisyui/theme" {
+  name: "bubbly";
+  default: true;
+  --color-primary: #8B5CF6;
+  --color-secondary: #F472B6;
+  --color-accent: #FBBF24;
+  --color-neutral: #1F2937;
+  --color-base-100: #FFFFFF;
+  --color-base-200: #FFFBEB;
+  --color-base-300: #FEF3C7;
+  --color-info: #60A5FA;
+  --color-success: #34D399;
+  --color-warning: #FBBF24;
+  --color-error: #FB7185;
+  --radius-box: 1rem;
+  --radius-btn: 9999px;
+  --radius-field: 1rem;
+  --border: 1px;
+}
+
+/* ── Theme Tokens ──────────────────────────────────── */
+@theme {
+  /* Subject Colors */
+  --color-subj-math: #3B82F6;
+  --color-subj-science: #10B981;
+  --color-subj-english: #EF4444;
+  --color-subj-hindi: #F97316;
+  --color-subj-social: #8B5CF6;
+  --color-subj-evs: #14B8A6;
+
+  /* Emotion: WELCOMING */
+  --color-bub-bg: #FFFBEB;
+  --color-bub-card: #FFFFFF;
+  --color-bub-text: #1F2937;
+  --color-bub-muted: #9CA3AF;
+  --color-bub-border: #E5E7EB;
+
+  /* Emotion: CONFIDENT */
+  --color-bub-success: #10B981;
+  --color-bub-error: #EF4444;
+  --color-bub-info: #3B82F6;
+
+  /* Legacy aliases (soft accent palette, kept for compat) */
+  --color-bub-primary: #8B5CF6;
+  --color-bub-secondary: #F472B6;
+  --color-bub-accent: #FBBF24;
+}
+
+/* ── Body ──────────────────────────────────────────── */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 50%, #ECFDF5 100%);
+  color: var(--color-bub-text);
+  font-family: 'Nunito', 'Outfit', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+/* ══════════════════════════════════════════════════════
+   UTILITY LAYER
+   ══════════════════════════════════════════════════════ */
+@layer utilities {
+
+  /* ──────────────────────────────────────────────────
+     TYPOGRAPHY HIERARCHY
+     ────────────────────────────────────────────────── */
+  .title-bub {
+    @apply font-black text-3xl;
+  }
+
+  .section-title-bub {
+    @apply font-bold text-lg;
+  }
+
+  .body-bub {
+    @apply font-medium text-base;
+  }
+
+  .label-bub {
+    @apply font-bold text-xs;
+  }
+
+  /* ──────────────────────────────────────────────────
+     SUBJECT COLOURS (solid bg)
+     ────────────────────────────────────────────────── */
+  .subj-math    { @apply bg-[#3B82F6] text-white; }
+  .subj-science { @apply bg-[#10B981] text-white; }
+  .subj-english { @apply bg-[#EF4444] text-white; }
+  .subj-hindi   { @apply bg-[#F97316] text-white; }
+  .subj-social  { @apply bg-[#8B5CF6] text-white; }
+  .subj-evs     { @apply bg-[#14B8A6] text-white; }
+
+  /* ──────────────────────────────────────────────────
+     SUBJECT PILLS (light tint bg, for badges/labels)
+     ────────────────────────────────────────────────── */
+  .subj-pill-math    { @apply bg-blue-100 text-[#3B82F6] font-bold text-xs rounded-2xl px-3 py-1; }
+  .subj-pill-science { @apply bg-emerald-100 text-[#10B981] font-bold text-xs rounded-2xl px-3 py-1; }
+  .subj-pill-english { @apply bg-red-100 text-[#EF4444] font-bold text-xs rounded-2xl px-3 py-1; }
+  .subj-pill-hindi   { @apply bg-orange-100 text-[#F97316] font-bold text-xs rounded-2xl px-3 py-1; }
+  .subj-pill-social  { @apply bg-purple-100 text-[#8B5CF6] font-bold text-xs rounded-2xl px-3 py-1; }
+  .subj-pill-evs     { @apply bg-teal-100 text-[#14B8A6] font-bold text-xs rounded-2xl px-3 py-1; }
+
+  /* ──────────────────────────────────────────────────
+     CARDS  (16px rounded-2xl, shadow-lg, hover lift)
+     ────────────────────────────────────────────────── */
+  .card-bub {
+    @apply rounded-2xl bg-white/90 backdrop-blur-sm shadow-lg border border-white/50;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .card-bub:hover {
+    @apply -translate-y-1 shadow-xl;
+  }
+
+  .card-bub-solid {
+    @apply rounded-2xl bg-white shadow-lg border border-gray-100;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .card-bub-solid:hover {
+    @apply -translate-y-1 shadow-xl;
+  }
+
+  .interactive-card {
+    @apply rounded-2xl bg-white shadow-lg border border-gray-100;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .interactive-card:hover {
+    @apply -translate-y-1 shadow-xl;
+  }
+
+  /* ──────────────────────────────────────────────────
+     BUTTONS  (flat colours, no gradients, scale on press)
+     ────────────────────────────────────────────────── */
+  .btn-bub {
+    @apply rounded-2xl font-bold text-sm px-6 py-3 shadow-lg transition-all duration-200 active:scale-95 cursor-pointer;
+  }
+
+  .btn-bub-primary {
+    @apply rounded-2xl font-bold text-sm px-6 py-3 shadow-lg transition-all duration-200 active:scale-95 cursor-pointer bg-[#8B5CF6] text-white hover:bg-[#7C3AED];
+  }
+
+  .btn-bub-secondary {
+    @apply rounded-2xl font-bold text-sm px-6 py-3 shadow-lg transition-all duration-200 active:scale-95 cursor-pointer bg-[#FBBF24] text-gray-900 hover:bg-[#F59E0B];
+  }
+
+  .btn-bub-success {
+    @apply rounded-2xl font-bold text-sm px-6 py-3 shadow-lg transition-all duration-200 active:scale-95 cursor-pointer bg-[#10B981] text-white hover:bg-[#059669];
+  }
+
+  .btn-bub-error {
+    @apply rounded-2xl font-bold text-sm px-6 py-3 shadow-lg transition-all duration-200 active:scale-95 cursor-pointer bg-[#EF4444] text-white hover:bg-[#DC2626];
+  }
+
+  .btn-bub-ghost {
+    @apply rounded-2xl font-bold text-sm px-6 py-3 shadow-lg transition-all duration-200 active:scale-95 cursor-pointer bg-white/80 text-gray-700 border border-gray-200 hover:bg-white;
+  }
+
+  /* Subject-specific action buttons */
+  .btn-subj-math    { @apply rounded-2xl font-bold text-sm px-6 py-3 shadow-lg transition-all duration-200 active:scale-95 cursor-pointer bg-[#3B82F6] text-white hover:bg-[#2563EB]; }
+  .btn-subj-science { @apply rounded-2xl font-bold text-sm px-6 py-3 shadow-lg transition-all duration-200 active:scale-95 cursor-pointer bg-[#10B981] text-white hover:bg-[#059669]; }
+  .btn-subj-english { @apply rounded-2xl font-bold text-sm px-6 py-3 shadow-lg transition-all duration-200 active:scale-95 cursor-pointer bg-[#EF4444] text-white hover:bg-[#DC2626]; }
+  .btn-subj-hindi   { @apply rounded-2xl font-bold text-sm px-6 py-3 shadow-lg transition-all duration-200 active:scale-95 cursor-pointer bg-[#F97316] text-white hover:bg-[#EA580C]; }
+  .btn-subj-social  { @apply rounded-2xl font-bold text-sm px-6 py-3 shadow-lg transition-all duration-200 active:scale-95 cursor-pointer bg-[#8B5CF6] text-white hover:bg-[#7C3AED]; }
+  .btn-subj-evs     { @apply rounded-2xl font-bold text-sm px-6 py-3 shadow-lg transition-all duration-200 active:scale-95 cursor-pointer bg-[#14B8A6] text-white hover:bg-[#0D9488]; }
+
+  /* ──────────────────────────────────────────────────
+     INPUTS
+     ────────────────────────────────────────────────── */
+  .input-bub {
+    @apply rounded-2xl border-2 border-gray-200 focus:border-[#8B5CF6] focus:ring-4 focus:ring-[#8B5CF6]/20 outline-none p-4 bg-white text-gray-800 placeholder:text-gray-400 transition-all duration-200;
+  }
+
+  /* ──────────────────────────────────────────────────
+     BADGES  (flat colours, rounded-2xl)
+     ────────────────────────────────────────────────── */
+  .badge-bub {
+    @apply rounded-2xl px-3 py-1 font-bold text-xs shadow-sm;
+  }
+
+  .badge-bub-primary { @apply rounded-2xl px-3 py-1 font-bold text-xs shadow-sm bg-[#8B5CF6] text-white; }
+  .badge-bub-success { @apply rounded-2xl px-3 py-1 font-bold text-xs shadow-sm bg-[#10B981] text-white; }
+  .badge-bub-warning { @apply rounded-2xl px-3 py-1 font-bold text-xs shadow-sm bg-[#FBBF24] text-gray-900; }
+  .badge-bub-error   { @apply rounded-2xl px-3 py-1 font-bold text-xs shadow-sm bg-[#EF4444] text-white; }
+
+  /* ──────────────────────────────────────────────────
+     SECTIONS
+     ────────────────────────────────────────────────── */
+  .section-bub {
+    @apply rounded-2xl bg-white/60 backdrop-blur-sm border border-white/30 p-6 shadow-sm;
+  }
+
+  /* ──────────────────────────────────────────────────
+     HERO / CELEBRATION  (gradients ALLOWED here only)
+     ────────────────────────────────────────────────── */
+  .hero-bub {
+    @apply rounded-2xl bg-gradient-to-br from-amber-200 via-amber-100 to-yellow-50 shadow-lg;
+  }
+
+  .celebration-bub {
+    @apply rounded-2xl bg-gradient-to-br from-emerald-200 via-teal-100 to-green-50 shadow-lg;
+  }
+
+  /* ──────────────────────────────────────────────────
+     ICON WRAPPERS  (for lucide-react / inline SVGs)
+     Use instead of raw emoji tags:
+       <span className="icon-bub"><Star className="w-5 h-5" /></span>
+     ────────────────────────────────────────────────── */
+  .icon-bub {
+    @apply inline-flex items-center justify-center w-10 h-10 rounded-2xl bg-gray-100 text-gray-600;
+  }
+
+  .icon-bub-sm {
+    @apply inline-flex items-center justify-center w-6 h-6 rounded-2xl bg-gray-100 text-gray-600;
+  }
+
+  .icon-bub-lg {
+    @apply inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-gray-100 text-gray-600;
+  }
+
+  /* Subject-tinted icon wrappers */
+  .icon-math    { @apply inline-flex items-center justify-center w-10 h-10 rounded-2xl bg-blue-100 text-[#3B82F6]; }
+  .icon-science { @apply inline-flex items-center justify-center w-10 h-10 rounded-2xl bg-emerald-100 text-[#10B981]; }
+  .icon-english { @apply inline-flex items-center justify-center w-10 h-10 rounded-2xl bg-red-100 text-[#EF4444]; }
+  .icon-hindi   { @apply inline-flex items-center justify-center w-10 h-10 rounded-2xl bg-orange-100 text-[#F97316]; }
+  .icon-social  { @apply inline-flex items-center justify-center w-10 h-10 rounded-2xl bg-purple-100 text-[#8B5CF6]; }
+  .icon-evs     { @apply inline-flex items-center justify-center w-10 h-10 rounded-2xl bg-teal-100 text-[#14B8A6]; }
+
+  /* ──────────────────────────────────────────────────
+     LEGACY ANIMATIONS (preserved)
+     ────────────────────────────────────────────────── */
+  .float-anim {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  .bounce-gentle {
+    animation: bounce-gentle 2s ease-in-out infinite;
+  }
+
+.gradient-shift {
+  background-size: 200% 200%;
+  animation: gradient-shift 4s ease infinite;
+}
+
+/* ── Mobile Safe Area ───────────────────────────────── */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ── Hide scrollbar on mobile subject pills ─────────── */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Touch target minimum for all interactive elements */
+@media (hover: none) and (pointer: coarse) {
+  a, button, input, select, textarea, label, [role="button"] {
+    /* individual elements should set min-h-[44px] min-w-[44px] */
+  }
+}
+
+/* ── Mobile responsive text scaling ─────────────────── */
+@media (max-width: 640px) {
+  .prose {
+    font-size: 0.9375rem;
+  }
+  .prose h1 { font-size: 1.25rem; }
+  .prose h2 { font-size: 1.125rem; }
+  .prose h3 { font-size: 1rem; }
+  .prose pre { font-size: 0.8125rem; }
+}
+
+  /* ──────────────────────────────────────────────────
+     MICRO-INTERACTIONS (success glow, error shake)
+     Apply these classes dynamically via state:
+       className={isCorrect ? 'success-glow' : ''}
+       className={isWrong ? 'shake' : ''}
+     ────────────────────────────────────────────────── */
+  .success-glow {
+    animation: success-glow 0.6s ease-out;
+  }
+
+  .shake {
+    animation: shake 0.5s ease-in-out;
+  }
+}
+
+/* ── Global transition on all interactive elements ── */
+button, a, [role="button"] {
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+button:active, [role="button"]:active {
+  transform: scale(0.95);
+}
+
+/* ══════════════════════════════════════════════════════
+   KEYFRAMES
+   ══════════════════════════════════════════════════════ */
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes bounce-gentle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes success-glow {
+  0%   { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+  50%  { box-shadow: 0 0 0 14px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-3px); }
+  20%, 40%, 60%, 80% { transform: translateX(3px); }
+}
