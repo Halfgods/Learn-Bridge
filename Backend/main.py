@@ -316,6 +316,88 @@ def proxy_pdf():
         return response
     except req_lib.RequestException as e:
         return jsonify({"error": f"Failed to fetch PDF: {e}"}), 502
+
+
+@app.route('/api/content/pdf/confirm', methods=['POST'])
+def confirm_chapter_pdf():
+    """
+    Save a confirmed PDF URL for a specific chapter.
+    Only writes to MongoDB if no confirmed entry exists yet (idempotent).
+    Body: { std, subjectName, chapterName, ncertUrl }
+    """
+    body = request.get_json(force=True) or {}
+    std = body.get('std')
+    subject_name = (body.get('subjectName') or '').strip()
+    chapter_name = ' '.join((body.get('chapterName') or '').split())
+    ncert_url = (body.get('ncertUrl') or '').strip()
+
+    if not all([std, subject_name, chapter_name, ncert_url]):
+        return jsonify({"error": "Missing fields: std, subjectName, chapterName, ncertUrl"}), 400
+
+    try:
+        # Upsert — only insert if no confirmed doc exists for this chapter yet
+        result = pdfs_collection.update_one(
+            {
+                'std': std,
+                'subjectName': re.compile(f'^{re.escape(subject_name)}$', re.I),
+                'chapterName': re.compile(f'^{re.escape(chapter_name)}$', re.I),
+            },
+            {
+                '$setOnInsert': {
+                    'std': std,
+                    'subjectName': subject_name,
+                    'chapterName': chapter_name,
+                    'ncertUrl': ncert_url,
+                    'confirmedByUser': True,
+                }
+            },
+            upsert=True,
+        )
+        action = 'inserted' if result.upserted_id else 'already_exists'
+        return jsonify({"status": action}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/content/pdf/subject', methods=['GET'])
+def get_subject_pdf():
+    """
+    Return the whole-book proxy URL for a subject.
+    Prefers the explicit 'Full Textbook' sentinel seeded by seed.js.
+    Falls back to deriving chapter-01 URL from any existing chapter URL.
+    """
+    std = request.args.get('std', type=int)
+    subject_name = (request.args.get('subjectName') or '').strip()
+    if not std or not subject_name:
+        return jsonify({"error": "Missing std or subjectName"}), 400
+
+    try:
+        subject_filter = re.compile(f'^{re.escape(subject_name)}$', re.I)
+
+        # Pass 1: explicit Full Textbook sentinel (seeded by seed.js)
+        full_doc = pdfs_collection.find_one(
+            {'std': std, 'subjectName': subject_filter, 'isFullBook': True},
+            {'_id': 0, 'ncertUrl': 1}
+        )
+        if full_doc:
+            ncert_url = full_doc['ncertUrl']
+        else:
+            # Pass 2: derive from any existing chapter URL
+            sample = pdfs_collection.find_one(
+                {'std': std, 'subjectName': subject_filter},
+                {'_id': 0, 'ncertUrl': 1}
+            )
+            if not sample:
+                return jsonify({"error": "No PDFs found for this subject"}), 404
+            # Replace last 2 digit chapter suffix with 01
+            ncert_url = re.sub(r'(\d{2})\.pdf$', '01.pdf', sample['ncertUrl'])
+
+        proxy_url = f"/api/content/pdf/proxy?url={req_lib.utils.requote_uri(ncert_url)}"
+        return jsonify({"ncertUrl": ncert_url, "proxyUrl": proxy_url}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/content/related', methods=['GET'])
 def get_related_concepts():
     std = request.args.get('std', type=int)
