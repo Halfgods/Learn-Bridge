@@ -277,7 +277,7 @@ def _fuzzy_find_pdf(std: int, subject_name: str, chapter_name: str):
     # Pass 1: exact
     doc = pdfs_collection.find_one(
         {'std': std, 'subjectName': subject_name, 'chapterName': chapter_name},
-        {'_id': 0, 'ncertUrl': 1, 'chapterName': 1}
+        {'_id': 0, 'ncertUrl': 1, 'chapterName': 1, 'updatedBy': 1}
     )
     if doc:
         return doc
@@ -289,7 +289,7 @@ def _fuzzy_find_pdf(std: int, subject_name: str, chapter_name: str):
             'subjectName': re.compile(f'^{re.escape(subject_name)}$', re.I),
             'chapterName': re.compile(f'^{re.escape(chapter_name)}$', re.I),
         },
-        {'_id': 0, 'ncertUrl': 1, 'chapterName': 1}
+        {'_id': 0, 'ncertUrl': 1, 'chapterName': 1, 'updatedBy': 1}
     )
     if doc:
         return doc
@@ -300,13 +300,13 @@ def _fuzzy_find_pdf(std: int, subject_name: str, chapter_name: str):
             'std': std,
             'subjectName': re.compile(f'^{re.escape(subject_name)}$', re.I),
         },
-        {'_id': 0, 'ncertUrl': 1, 'chapterName': 1}
+        {'_id': 0, 'ncertUrl': 1, 'chapterName': 1, 'updatedBy': 1}
     ))
     if not candidates:
         # Try without subject filter (broad search)
         candidates = list(pdfs_collection.find(
             {'std': std},
-            {'_id': 0, 'ncertUrl': 1, 'chapterName': 1}
+            {'_id': 0, 'ncertUrl': 1, 'chapterName': 1, 'updatedBy': 1}
         ))
 
     if not candidates:
@@ -355,6 +355,7 @@ def get_chapter_pdf():
         return jsonify({
             "ncertUrl": pdf_doc.get('ncertUrl'),
             "matchedChapter": pdf_doc.get('chapterName'),
+            "updatedBy": pdf_doc.get('updatedBy'),
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -472,6 +473,52 @@ def confirm_chapter_pdf():
         )
         action = 'inserted' if result.upserted_id else 'already_exists'
         return jsonify({"status": action}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/content/pdf/update', methods=['PUT'])
+@token_required
+def teacher_update_pdf(current_user):
+    """
+    Teacher-only: overwrite the NCERT PDF URL for a chapter.
+    Records who updated it. Permanent change in DB.
+    Body: { std, subjectName, chapterName, ncertUrl }
+    """
+    if current_user.get('role') != 'teacher':
+        return jsonify({"error": "Only teachers can update PDF links"}), 403
+
+    body = request.get_json(force=True) or {}
+    std = body.get('std')
+    subject_name = (body.get('subjectName') or '').strip()
+    chapter_name = ' '.join((body.get('chapterName') or '').split())
+    ncert_url = (body.get('ncertUrl') or '').strip()
+
+    if not all([std, subject_name, chapter_name, ncert_url]):
+        return jsonify({"error": "Missing fields: std, subjectName, chapterName, ncertUrl"}), 400
+
+    try:
+        teacher_name = current_user.get('name') or current_user.get('email')
+        result = pdfs_collection.update_one(
+            {
+                'std': std,
+                'subjectName': re.compile(f'^{re.escape(subject_name)}$', re.I),
+                'chapterName': re.compile(f'^{re.escape(chapter_name)}$', re.I),
+            },
+            {
+                '$set': {
+                    'std': std,
+                    'subjectName': subject_name,
+                    'chapterName': chapter_name,
+                    'ncertUrl': ncert_url,
+                    'updatedBy': teacher_name,
+                    'updatedAt': datetime.datetime.utcnow().isoformat(),
+                }
+            },
+            upsert=True,
+        )
+        action = 'updated' if result.modified_count or result.upserted_id else 'no_change'
+        return jsonify({"status": action, "updatedBy": teacher_name}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
