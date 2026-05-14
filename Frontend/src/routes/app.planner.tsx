@@ -4,6 +4,8 @@ import { Calendar, Plus, Trash2, CheckCircle2, Circle, CalendarDays } from "luci
 import { cn } from "@/lib/utils";
 import { ClayButton } from "@/components/ClayButton";
 import { format, isPast, isValid, parseISO, startOfWeek, addDays } from "date-fns";
+import { DayPicker } from "react-day-picker";
+import "react-day-picker/style.css";
 
 export const Route = createFileRoute("/app/planner")({
   head: () => ({ meta: [{ title: "Planner — Nova Learn" }] }),
@@ -30,6 +32,7 @@ function PlannerPage() {
   const [tasks, setTasks] = useState<Task[]>(loadTasks);
   const [newText, setNewText] = useState("");
   const [newDate, setNewDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [showCalendar, setShowCalendar] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("planner-tasks", JSON.stringify(tasks));
@@ -48,10 +51,6 @@ function PlannerPage() {
 
   const deleteTask = (id: string) => {
     setTasks((prev) => prev.filter((t) => t.id !== id));
-  };
-
-  const updateTaskDate = (id: string, date: string) => {
-    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, date } : t)));
   };
 
   const today = new Date();
@@ -77,16 +76,29 @@ function PlannerPage() {
       </header>
 
       <div className="clay-lg bg-card p-5 space-y-3">
-        <div className="flex gap-2">
-          <div className="clay-pressed bg-card rounded-2xl px-3 h-11 flex items-center gap-2 shrink-0">
-            <CalendarDays className="w-4 h-4 text-muted-foreground" />
-            <input
-              type="date"
-              value={newDate}
-              onChange={(e) => setNewDate(e.target.value)}
-              className="bg-transparent outline-none font-bold text-sm [color-scheme:dark] dark:[color-scheme:dark]"
-            />
-          </div>
+          <div className="flex gap-2 relative">
+            <button
+              type="button"
+              onClick={() => setShowCalendar(!showCalendar)}
+              className="clay-pressed bg-card rounded-2xl px-3 h-11 flex items-center gap-2 shrink-0 cursor-pointer hover:bg-muted/50 transition-colors"
+            >
+              <CalendarDays className="w-4 h-4 text-muted-foreground" />
+              <span className="font-bold text-sm">{format(parseISO(newDate), "MMM d, yyyy")}</span>
+            </button>
+            {showCalendar && (
+              <div className="absolute top-full left-0 mt-2 z-50 clay-lg bg-card p-3 rounded-2xl shadow-xl" style={{ position: "absolute" }}>
+                <DayPicker
+                  mode="single"
+                  selected={new Date(newDate)}
+                  onSelect={(d) => {
+                    if (d) {
+                      setNewDate(format(d, "yyyy-MM-dd"));
+                      setShowCalendar(false);
+                    }
+                  }}
+                />
+              </div>
+            )}
           <input
             value={newText}
             onChange={(e) => setNewText(e.target.value)}
@@ -143,12 +155,9 @@ function PlannerPage() {
                     {task.text}
                   </span>
                   <div className="flex items-center gap-1 shrink-0">
-                    <input
-                      type="date"
-                      value={task.date}
-                      onChange={(e) => updateTaskDate(task.id, e.target.value)}
-                      className="w-32 h-7 rounded-lg border border-muted bg-background px-2 text-xs font-bold [color-scheme:dark] dark:[color-scheme:dark]"
-                    />
+                    <span className="text-[10px] font-bold text-muted-foreground px-1.5 py-0.5 rounded-md bg-muted/50">
+                      {format(parseISO(task.date), "MMM d")}
+                    </span>
                     <button
                       onClick={() => deleteTask(task.id)}
                       className="shrink-0 p-1 rounded-lg text-muted-foreground/40 hover:text-destructive opacity-0 group-hover:opacity-100 transition-all"
