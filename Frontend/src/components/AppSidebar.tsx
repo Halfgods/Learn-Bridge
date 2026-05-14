@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, BookOpen, Trophy, Calendar, Settings, GraduationCap, Medal, Brain } from "lucide-react";
+import { Home, BookOpen, Trophy, Calendar, Settings, GraduationCap, Medal, Brain, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { useMe } from "@/hooks/useMe";
@@ -10,6 +10,7 @@ function navItems(isTeacher: boolean) {
     { to: "/app/subjects", label: "Subjects", icon: BookOpen },
     { to: "/app/quizzes", label: "Quizzes", icon: Trophy },
     ...(isTeacher ? [{ to: "/app/leaderboard", label: "Leaderboard", icon: Medal }] : []),
+    ...(isTeacher ? [{ to: "/app/student-progress", label: "Progress", icon: BarChart3 }] : []),
     { to: "/app/concept-map", label: "Concept Map", icon: Brain },
     { to: "/app/planner", label: "Planner", icon: Calendar },
     { to: "/app/settings", label: "Settings", icon: Settings },

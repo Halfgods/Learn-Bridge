@@ -78,6 +78,31 @@ function SubjectExplorer() {
 
   const chapters = data?.chapters || [];
 
+  const chapterProgressQ = useQuery({
+    queryKey: ["chapter-progress", dbSubjectName],
+    queryFn: async () => {
+      const token = localStorage.getItem("token");
+      if (!token) return [];
+      const res = await fetch(apiPath("/api/chapter/progress"), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch progress");
+      const all = await res.json();
+      return (Array.isArray(all) ? all : []).filter(
+        (p: any) => p.subjectName?.toLowerCase() === dbSubjectName.toLowerCase()
+      );
+    },
+    enabled: !!user,
+  });
+
+  const chapterScores = new Map<string, number>();
+  for (const p of (chapterProgressQ.data || [])) {
+    chapterScores.set(p.chapterName, p.quizScore != null && p.totalQuestions > 0
+      ? Math.round((p.quizScore / p.totalQuestions) * 100)
+      : 0
+    );
+  }
+
   return (
     <div className="p-6 lg:p-10 max-w-5xl mx-auto space-y-6">
       <Link to="/app" className="inline-flex items-center gap-2 text-sm font-bold text-muted-foreground hover:text-foreground">
@@ -121,8 +146,8 @@ function SubjectExplorer() {
           // Subsequence match: all characters of the query appear in order in the chapter name
           return computeLCS(ch.chapterName, searchQuery) === searchQuery.length;
         }).map((ch: any, idx: number) => {
-          const difficulty = (idx % 3) + 1; // Fake difficulty 1,2,3
-          const done = Math.floor(Math.random() * 100); // Fake progress
+          const difficulty = (idx % 3) + 1;
+          const done = chapterScores.get(ch.chapterName) ?? 0;
           
           return (
             <div key={ch.chapterName} className="rounded-2xl">

@@ -16,6 +16,7 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppSubjectsRouteImport } from './routes/app.subjects'
+import { Route as AppStudentProgressRouteImport } from './routes/app.student-progress'
 import { Route as AppSettingsRouteImport } from './routes/app.settings'
 import { Route as AppQuizzesRouteImport } from './routes/app.quizzes'
 import { Route as AppPlannerRouteImport } from './routes/app.planner'
@@ -61,6 +62,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
 const AppSubjectsRoute = AppSubjectsRouteImport.update({
   id: '/subjects',
   path: '/subjects',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppStudentProgressRoute = AppStudentProgressRouteImport.update({
+  id: '/student-progress',
+  path: '/student-progress',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
@@ -130,6 +136,7 @@ export interface FileRoutesByFullPath {
   '/app/planner': typeof AppPlannerRoute
   '/app/quizzes': typeof AppQuizzesRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
+  '/app/student-progress': typeof AppStudentProgressRoute
   '/app/subjects': typeof AppSubjectsRoute
   '/app/': typeof AppIndexRoute
   '/app/chapter/$chapterId': typeof AppChapterChapterIdRoute
@@ -148,6 +155,7 @@ export interface FileRoutesByTo {
   '/app/leaderboard': typeof AppLeaderboardRoute
   '/app/planner': typeof AppPlannerRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/student-progress': typeof AppStudentProgressRoute
   '/app/subjects': typeof AppSubjectsRoute
   '/app': typeof AppIndexRoute
   '/app/chapter/$chapterId': typeof AppChapterChapterIdRoute
@@ -169,6 +177,7 @@ export interface FileRoutesById {
   '/app/planner': typeof AppPlannerRoute
   '/app/quizzes': typeof AppQuizzesRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
+  '/app/student-progress': typeof AppStudentProgressRoute
   '/app/subjects': typeof AppSubjectsRoute
   '/app/': typeof AppIndexRoute
   '/app/chapter/$chapterId': typeof AppChapterChapterIdRoute
@@ -191,6 +200,7 @@ export interface FileRouteTypes {
     | '/app/planner'
     | '/app/quizzes'
     | '/app/settings'
+    | '/app/student-progress'
     | '/app/subjects'
     | '/app/'
     | '/app/chapter/$chapterId'
@@ -209,6 +219,7 @@ export interface FileRouteTypes {
     | '/app/leaderboard'
     | '/app/planner'
     | '/app/settings'
+    | '/app/student-progress'
     | '/app/subjects'
     | '/app'
     | '/app/chapter/$chapterId'
@@ -229,6 +240,7 @@ export interface FileRouteTypes {
     | '/app/planner'
     | '/app/quizzes'
     | '/app/settings'
+    | '/app/student-progress'
     | '/app/subjects'
     | '/app/'
     | '/app/chapter/$chapterId'
@@ -296,6 +308,13 @@ declare module '@tanstack/react-router' {
       path: '/subjects'
       fullPath: '/app/subjects'
       preLoaderRoute: typeof AppSubjectsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/student-progress': {
+      id: '/app/student-progress'
+      path: '/student-progress'
+      fullPath: '/app/student-progress'
+      preLoaderRoute: typeof AppStudentProgressRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/settings': {
@@ -411,6 +430,7 @@ interface AppRouteChildren {
   AppPlannerRoute: typeof AppPlannerRoute
   AppQuizzesRoute: typeof AppQuizzesRouteWithChildren
   AppSettingsRoute: typeof AppSettingsRoute
+  AppStudentProgressRoute: typeof AppStudentProgressRoute
   AppSubjectsRoute: typeof AppSubjectsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppChapterChapterIdRoute: typeof AppChapterChapterIdRoute
@@ -423,6 +443,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppPlannerRoute: AppPlannerRoute,
   AppQuizzesRoute: AppQuizzesRouteWithChildren,
   AppSettingsRoute: AppSettingsRoute,
+  AppStudentProgressRoute: AppStudentProgressRoute,
   AppSubjectsRoute: AppSubjectsRoute,
   AppIndexRoute: AppIndexRoute,
   AppChapterChapterIdRoute: AppChapterChapterIdRoute,

@@ -54,8 +54,6 @@ function PlannerPage() {
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, date } : t)));
   };
 
-  const [editingDate, setEditingDate] = useState<string | null>(null);
-
   const today = new Date();
   const weekStart = startOfWeek(today, { weekStartsOn: 1 });
   const weekDays = Array.from({ length: 7 }, (_, i) => {
@@ -145,27 +143,12 @@ function PlannerPage() {
                     {task.text}
                   </span>
                   <div className="flex items-center gap-1 shrink-0">
-                    {editingDate === task.id ? (
-                      <input
-                        type="date"
-                        value={task.date}
-                        onChange={(e) => {
-                          updateTaskDate(task.id, e.target.value);
-                          setEditingDate(null);
-                        }}
-                        onBlur={() => setEditingDate(null)}
-                        className="w-32 h-7 rounded-lg border border-muted bg-background px-2 text-xs font-bold [color-scheme:dark] dark:[color-scheme:dark]"
-                        autoFocus
-                      />
-                    ) : (
-                      <button
-                        onClick={() => setEditingDate(task.id)}
-                        className="flex items-center gap-1 text-xs font-bold text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted/50 transition-all"
-                      >
-                        <CalendarDays className="w-3 h-3" />
-                        {format(parseISO(task.date), "MMM d")}
-                      </button>
-                    )}
+                    <input
+                      type="date"
+                      value={task.date}
+                      onChange={(e) => updateTaskDate(task.id, e.target.value)}
+                      className="w-32 h-7 rounded-lg border border-muted bg-background px-2 text-xs font-bold [color-scheme:dark] dark:[color-scheme:dark]"
+                    />
                     <button
                       onClick={() => deleteTask(task.id)}
                       className="shrink-0 p-1 rounded-lg text-muted-foreground/40 hover:text-destructive opacity-0 group-hover:opacity-100 transition-all"

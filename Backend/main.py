@@ -1245,6 +1245,68 @@ def get_chapter_progress(current_user):
 
 
 # ==========================================
+# TEACHER — VIEW STUDENT CHAPTER PROGRESS
+# ==========================================
+@app.route('/api/teacher/students/progress', methods=['GET'])
+@token_required
+def teacher_student_chapter_progress(current_user):
+    if current_user.get("role") != "teacher":
+        return jsonify({"error": "Teachers only"}), 403
+    try:
+        subject = request.args.get("subject", "")
+        pipeline = [
+            {"$group": {
+                "_id": {"email": "$studentEmail", "name": "$studentName", "std": "$std"},
+                "attempts": {"$push": {
+                    "subject": "$subject",
+                    "chapter": "$chapter",
+                    "score": "$score",
+                    "total": "$total",
+                    "submittedAt": "$submittedAt"
+                }}
+            }},
+            {"$sort": {"_id.name": 1}}
+        ]
+        results = list(chapter_attempts_collection.aggregate(pipeline))
+        students = []
+        for r in results:
+            email = r["_id"]["email"]
+            name = r["_id"]["name"] or email
+            std = r["_id"].get("std", "")
+            attempts = r["attempts"]
+            if subject:
+                attempts = [a for a in attempts if a.get("subject", "").lower() == subject.lower()]
+            chapters_done = len(set(a["chapter"] for a in attempts if a.get("score", 0) > 0))
+            total_score = sum(a.get("score", 0) for a in attempts)
+            max_score = sum(a.get("total", 0) for a in attempts)
+            pct = round(total_score / max(max_score, 1) * 100)
+            chapters_detail = {}
+            for a in attempts:
+                ch = a.get("chapter", "")
+                if ch not in chapters_detail or (a.get("score", 0) or 0) > (chapters_detail[ch].get("score", 0) or 0):
+                    chapters_detail[ch] = {
+                        "chapter": ch,
+                        "subject": a.get("subject", ""),
+                        "score": a.get("score", 0),
+                        "total": a.get("total", 0),
+                        "submittedAt": a.get("submittedAt", ""),
+                    }
+            students.append({
+                "email": email,
+                "name": name,
+                "std": std,
+                "chaptersDone": chapters_done,
+                "totalScore": total_score,
+                "maxScore": max_score,
+                "percentage": pct,
+                "chapters": sorted(chapters_detail.values(), key=lambda x: x["chapter"]),
+            })
+        return jsonify({"students": students}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ==========================================
 # ASSESSMENT ROUTES
 # ==========================================
 @app.route('/api/assessment/random', methods=['GET'])

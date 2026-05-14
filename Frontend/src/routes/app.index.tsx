@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { apiPath, parseApiJson } from "@/lib/api";
 import { useMe } from "@/hooks/useMe";
@@ -49,20 +49,20 @@ type SubjectCardMeta = {
 };
 
 const subjectMeta: Record<string, SubjectCardMeta> = {
-  Mathematics: { icon: Calculator, gradient: "gradient-primary", text: "text-white", progress: 68, lessons: 24 },
-  Science: { icon: Beaker, gradient: "gradient-cyan", text: "text-white", progress: 42, lessons: 18 },
-  English: { icon: BookOpen, gradient: "gradient-yellow", text: "text-amber-900", progress: 81, lessons: 15 },
-  "Social Science": { icon: Globe2, gradient: "gradient-peach", text: "text-orange-900", progress: 35, lessons: 20 },
-  Computer: { icon: Cpu, gradient: "gradient-mint", text: "text-emerald-900", progress: 56, lessons: 12 },
-  Languages: { icon: Languages, gradient: "gradient-primary", text: "text-white", progress: 22, lessons: 16 },
-  "Environmental Studies": { icon: Globe2, gradient: "gradient-mint", text: "text-emerald-900", progress: 40, lessons: 14 },
+  Mathematics: { icon: Calculator, gradient: "gradient-primary", text: "text-white", progress: 0, lessons: 0 },
+  Science: { icon: Beaker, gradient: "gradient-cyan", text: "text-white", progress: 0, lessons: 0 },
+  English: { icon: BookOpen, gradient: "gradient-yellow", text: "text-amber-900", progress: 0, lessons: 0 },
+  "Social Science": { icon: Globe2, gradient: "gradient-peach", text: "text-orange-900", progress: 0, lessons: 0 },
+  Computer: { icon: Cpu, gradient: "gradient-mint", text: "text-emerald-900", progress: 0, lessons: 0 },
+  Languages: { icon: Languages, gradient: "gradient-primary", text: "text-white", progress: 0, lessons: 0 },
+  "Environmental Studies": { icon: Globe2, gradient: "gradient-mint", text: "text-emerald-900", progress: 0, lessons: 0 },
 };
 
 const fallbackSubjects = [
-  { id: "math", name: "Mathematics", icon: Calculator, gradient: "gradient-primary", text: "text-white", progress: 68, lessons: 24 },
-  { id: "science", name: "Science", icon: Beaker, gradient: "gradient-cyan", text: "text-white", progress: 42, lessons: 18 },
-  { id: "english", name: "English", icon: BookOpen, gradient: "gradient-yellow", text: "text-amber-900", progress: 81, lessons: 15 },
-  { id: "social", name: "Social Science", icon: Globe2, gradient: "gradient-peach", text: "text-orange-900", progress: 35, lessons: 20 },
+  { id: "math", name: "Mathematics", icon: Calculator, gradient: "gradient-primary", text: "text-white", progress: 0, lessons: 0 },
+  { id: "science", name: "Science", icon: Beaker, gradient: "gradient-cyan", text: "text-white", progress: 0, lessons: 0 },
+  { id: "english", name: "English", icon: BookOpen, gradient: "gradient-yellow", text: "text-amber-900", progress: 0, lessons: 0 },
+  { id: "social", name: "Social Science", icon: Globe2, gradient: "gradient-peach", text: "text-orange-900", progress: 0, lessons: 0 },
 ];
 
 type Assignment = {
@@ -179,9 +179,57 @@ function Dashboard() {
 
   const firstName = user?.name ? user.name.split(" ")[0] : "...";
 
+  const allChaptersQ = useQuery({
+    queryKey: ["all-chapters", gradeForCurriculum],
+    queryFn: async () => {
+      const res = await fetch(apiPath(`/api/curriculum/class/${gradeForCurriculum}/all-chapters`));
+      const data = await parseApiJson<{ chapters?: { subjectName: string; chapterName: string }[] }>(res);
+      if (!res.ok) throw new Error("Failed");
+      return data.chapters ?? [];
+    },
+    enabled: gradeForCurriculum != null,
+  });
+
+  const chapterProgressQ = useQuery({
+    queryKey: ["chapter-progress"],
+    queryFn: async () => {
+      const token = localStorage.getItem("token");
+      const res = await fetch(apiPath("/api/chapter/progress"), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await parseApiJson<{ chapterName: string; subjectName: string; isCompleted: boolean }[]>(res);
+      if (!res.ok) throw new Error("Failed to fetch chapter progress");
+      return data;
+    },
+    enabled: !!user && !isTeacher,
+  });
+
+  const realProgress = useMemo(() => {
+    if (!chapterProgressQ.data || !allChaptersQ.data) return null;
+    if (!Array.isArray(chapterProgressQ.data)) return null;
+    const totalBySubject: Record<string, number> = {};
+    const completedBySubject: Record<string, Set<string>> = {};
+    for (const ch of allChaptersQ.data) {
+      totalBySubject[ch.subjectName] = (totalBySubject[ch.subjectName] || 0) + 1;
+      if (!completedBySubject[ch.subjectName]) completedBySubject[ch.subjectName] = new Set();
+    }
+    for (const p of chapterProgressQ.data) {
+      const set = completedBySubject[p.subjectName];
+      if (set) set.add(p.chapterName);
+    }
+    const result: Record<string, number> = {};
+    for (const [subject, total] of Object.entries(totalBySubject)) {
+      const done = completedBySubject[subject]?.size || 0;
+      result[subject] = total > 0 ? Math.round((done / total) * 100) : 0;
+    }
+    return result;
+  }, [chapterProgressQ.data, allChaptersQ.data]);
+
   const subjects =
     dynamicSubjects && dynamicSubjects.length > 0
       ? dynamicSubjects.map((name: string) => {
+          const progress = realProgress?.[name] ?? 0;
+          const totalChapters = allChaptersQ.data?.filter((c) => c.subjectName === name).length ?? 0;
           const meta = subjectMeta[name] || {
             icon: BookOpen,
             gradient: "gradient-primary",
@@ -193,9 +241,23 @@ function Dashboard() {
             id: name.toLowerCase().replace(/\s+/g, "-"),
             name,
             ...meta,
+            progress,
+            lessons: totalChapters,
           };
         })
       : fallbackSubjects;
+
+  const lowestSubject = useMemo(() => {
+    if (!realProgress || subjects.length === 0) return null;
+    let lowest: { name: string; progress: number } | null = null;
+    for (const s of subjects) {
+      const p = realProgress[s.name] ?? 0;
+      if (!lowest || p < lowest.progress) {
+        lowest = { name: s.name, progress: p };
+      }
+    }
+    return lowest;
+  }, [realProgress, subjects]);
 
   const pendingCount = !isTeacher ? (studentAssignmentsQ.data?.pendingCount ?? 0) : 0;
   const studentAssignments = studentAssignmentsQ.data?.assignments ?? [];
@@ -207,17 +269,6 @@ function Dashboard() {
     (a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime(),
   );
   const pendingNotifications = studentAssignments.filter((a) => !a.completed && !dismissed.includes(a.quizId));
-
-  const allChaptersQ = useQuery({
-    queryKey: ["all-chapters", gradeForCurriculum],
-    queryFn: async () => {
-      const res = await fetch(apiPath(`/api/curriculum/class/${gradeForCurriculum}/all-chapters`));
-      const data = await parseApiJson<{ chapters?: { subjectName: string; chapterName: string }[] }>(res);
-      if (!res.ok) throw new Error("Failed");
-      return data.chapters ?? [];
-    },
-    enabled: gradeForCurriculum != null,
-  });
 
   function computeLCS(t: string, q: string): number {
     if (!q) return 0;
@@ -502,7 +553,9 @@ function Dashboard() {
           <p className="text-sm opacity-90 mb-4">
             {isTeacher
               ? "Draft a short quiz in Quizzes — students on that grade & board get a notification and see it in their schedule."
-              : "Based on yesterday's quiz, spend 15 min on Linear Equations to boost your weak area."}
+              : lowestSubject
+                ? `Based on your progress, focus on ${lowestSubject.name} (${lowestSubject.progress}% complete) — the subject where you need the most improvement.`
+                : "Start exploring subjects and taking chapter quizzes to get personalized recommendations."}
           </p>
           {isTeacher ? (
             <Link to="/app/quizzes/new" className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-primary font-bold clay-sm">
@@ -511,10 +564,10 @@ function Dashboard() {
           ) : (
             <Link
               to="/app/subject/$subjectId"
-              params={{ subjectId: "math" }}
+              params={{ subjectId: (lowestSubject?.name || "Mathematics").toLowerCase().replace(/\s+/g, "-") }}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-primary font-bold clay-sm"
             >
-              Start now <ArrowRight className="w-4 h-4" />
+              {lowestSubject ? `Improve ${lowestSubject.name} (${lowestSubject.progress}%)` : "Start now"} <ArrowRight className="w-4 h-4" />
             </Link>
           )}
         </div>
