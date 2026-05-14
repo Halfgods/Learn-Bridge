@@ -20,12 +20,15 @@ import { Route as AppStudentProgressRouteImport } from './routes/app.student-pro
 import { Route as AppSettingsRouteImport } from './routes/app.settings'
 import { Route as AppQuizzesRouteImport } from './routes/app.quizzes'
 import { Route as AppPlannerRouteImport } from './routes/app.planner'
+import { Route as AppNotebookRouteImport } from './routes/app.notebook'
 import { Route as AppLeaderboardRouteImport } from './routes/app.leaderboard'
 import { Route as AppConceptMapRouteImport } from './routes/app.concept-map'
 import { Route as AppQuizzesIndexRouteImport } from './routes/app.quizzes.index'
+import { Route as AppNotebookIndexRouteImport } from './routes/app.notebook.index'
 import { Route as AppSubjectSubjectIdRouteImport } from './routes/app.subject.$subjectId'
 import { Route as AppQuizzesNewRouteImport } from './routes/app.quizzes.new'
 import { Route as AppQuizzesQuizIdRouteImport } from './routes/app.quizzes.$quizId'
+import { Route as AppNotebookNoteIdRouteImport } from './routes/app.notebook.$noteId'
 import { Route as AppChapterChapterIdRouteImport } from './routes/app.chapter.$chapterId'
 import { Route as AppQuizzesQuizIdResultsRouteImport } from './routes/app.quizzes.$quizId.results'
 
@@ -84,6 +87,11 @@ const AppPlannerRoute = AppPlannerRouteImport.update({
   path: '/planner',
   getParentRoute: () => AppRoute,
 } as any)
+const AppNotebookRoute = AppNotebookRouteImport.update({
+  id: '/notebook',
+  path: '/notebook',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppLeaderboardRoute = AppLeaderboardRouteImport.update({
   id: '/leaderboard',
   path: '/leaderboard',
@@ -99,6 +107,11 @@ const AppQuizzesIndexRoute = AppQuizzesIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppQuizzesRoute,
 } as any)
+const AppNotebookIndexRoute = AppNotebookIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppNotebookRoute,
+} as any)
 const AppSubjectSubjectIdRoute = AppSubjectSubjectIdRouteImport.update({
   id: '/subject/$subjectId',
   path: '/subject/$subjectId',
@@ -113,6 +126,11 @@ const AppQuizzesQuizIdRoute = AppQuizzesQuizIdRouteImport.update({
   id: '/$quizId',
   path: '/$quizId',
   getParentRoute: () => AppQuizzesRoute,
+} as any)
+const AppNotebookNoteIdRoute = AppNotebookNoteIdRouteImport.update({
+  id: '/$noteId',
+  path: '/$noteId',
+  getParentRoute: () => AppNotebookRoute,
 } as any)
 const AppChapterChapterIdRoute = AppChapterChapterIdRouteImport.update({
   id: '/chapter/$chapterId',
@@ -133,6 +151,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/app/concept-map': typeof AppConceptMapRoute
   '/app/leaderboard': typeof AppLeaderboardRoute
+  '/app/notebook': typeof AppNotebookRouteWithChildren
   '/app/planner': typeof AppPlannerRoute
   '/app/quizzes': typeof AppQuizzesRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
@@ -140,9 +159,11 @@ export interface FileRoutesByFullPath {
   '/app/subjects': typeof AppSubjectsRoute
   '/app/': typeof AppIndexRoute
   '/app/chapter/$chapterId': typeof AppChapterChapterIdRoute
+  '/app/notebook/$noteId': typeof AppNotebookNoteIdRoute
   '/app/quizzes/$quizId': typeof AppQuizzesQuizIdRouteWithChildren
   '/app/quizzes/new': typeof AppQuizzesNewRoute
   '/app/subject/$subjectId': typeof AppSubjectSubjectIdRoute
+  '/app/notebook/': typeof AppNotebookIndexRoute
   '/app/quizzes/': typeof AppQuizzesIndexRoute
   '/app/quizzes/$quizId/results': typeof AppQuizzesQuizIdResultsRoute
 }
@@ -159,9 +180,11 @@ export interface FileRoutesByTo {
   '/app/subjects': typeof AppSubjectsRoute
   '/app': typeof AppIndexRoute
   '/app/chapter/$chapterId': typeof AppChapterChapterIdRoute
+  '/app/notebook/$noteId': typeof AppNotebookNoteIdRoute
   '/app/quizzes/$quizId': typeof AppQuizzesQuizIdRouteWithChildren
   '/app/quizzes/new': typeof AppQuizzesNewRoute
   '/app/subject/$subjectId': typeof AppSubjectSubjectIdRoute
+  '/app/notebook': typeof AppNotebookIndexRoute
   '/app/quizzes': typeof AppQuizzesIndexRoute
   '/app/quizzes/$quizId/results': typeof AppQuizzesQuizIdResultsRoute
 }
@@ -174,6 +197,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/app/concept-map': typeof AppConceptMapRoute
   '/app/leaderboard': typeof AppLeaderboardRoute
+  '/app/notebook': typeof AppNotebookRouteWithChildren
   '/app/planner': typeof AppPlannerRoute
   '/app/quizzes': typeof AppQuizzesRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
@@ -181,9 +205,11 @@ export interface FileRoutesById {
   '/app/subjects': typeof AppSubjectsRoute
   '/app/': typeof AppIndexRoute
   '/app/chapter/$chapterId': typeof AppChapterChapterIdRoute
+  '/app/notebook/$noteId': typeof AppNotebookNoteIdRoute
   '/app/quizzes/$quizId': typeof AppQuizzesQuizIdRouteWithChildren
   '/app/quizzes/new': typeof AppQuizzesNewRoute
   '/app/subject/$subjectId': typeof AppSubjectSubjectIdRoute
+  '/app/notebook/': typeof AppNotebookIndexRoute
   '/app/quizzes/': typeof AppQuizzesIndexRoute
   '/app/quizzes/$quizId/results': typeof AppQuizzesQuizIdResultsRoute
 }
@@ -197,6 +223,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/app/concept-map'
     | '/app/leaderboard'
+    | '/app/notebook'
     | '/app/planner'
     | '/app/quizzes'
     | '/app/settings'
@@ -204,9 +231,11 @@ export interface FileRouteTypes {
     | '/app/subjects'
     | '/app/'
     | '/app/chapter/$chapterId'
+    | '/app/notebook/$noteId'
     | '/app/quizzes/$quizId'
     | '/app/quizzes/new'
     | '/app/subject/$subjectId'
+    | '/app/notebook/'
     | '/app/quizzes/'
     | '/app/quizzes/$quizId/results'
   fileRoutesByTo: FileRoutesByTo
@@ -223,9 +252,11 @@ export interface FileRouteTypes {
     | '/app/subjects'
     | '/app'
     | '/app/chapter/$chapterId'
+    | '/app/notebook/$noteId'
     | '/app/quizzes/$quizId'
     | '/app/quizzes/new'
     | '/app/subject/$subjectId'
+    | '/app/notebook'
     | '/app/quizzes'
     | '/app/quizzes/$quizId/results'
   id:
@@ -237,6 +268,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/app/concept-map'
     | '/app/leaderboard'
+    | '/app/notebook'
     | '/app/planner'
     | '/app/quizzes'
     | '/app/settings'
@@ -244,9 +276,11 @@ export interface FileRouteTypes {
     | '/app/subjects'
     | '/app/'
     | '/app/chapter/$chapterId'
+    | '/app/notebook/$noteId'
     | '/app/quizzes/$quizId'
     | '/app/quizzes/new'
     | '/app/subject/$subjectId'
+    | '/app/notebook/'
     | '/app/quizzes/'
     | '/app/quizzes/$quizId/results'
   fileRoutesById: FileRoutesById
@@ -338,6 +372,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPlannerRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/notebook': {
+      id: '/app/notebook'
+      path: '/notebook'
+      fullPath: '/app/notebook'
+      preLoaderRoute: typeof AppNotebookRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/leaderboard': {
       id: '/app/leaderboard'
       path: '/leaderboard'
@@ -358,6 +399,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/app/quizzes/'
       preLoaderRoute: typeof AppQuizzesIndexRouteImport
       parentRoute: typeof AppQuizzesRoute
+    }
+    '/app/notebook/': {
+      id: '/app/notebook/'
+      path: '/'
+      fullPath: '/app/notebook/'
+      preLoaderRoute: typeof AppNotebookIndexRouteImport
+      parentRoute: typeof AppNotebookRoute
     }
     '/app/subject/$subjectId': {
       id: '/app/subject/$subjectId'
@@ -380,6 +428,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppQuizzesQuizIdRouteImport
       parentRoute: typeof AppQuizzesRoute
     }
+    '/app/notebook/$noteId': {
+      id: '/app/notebook/$noteId'
+      path: '/$noteId'
+      fullPath: '/app/notebook/$noteId'
+      preLoaderRoute: typeof AppNotebookNoteIdRouteImport
+      parentRoute: typeof AppNotebookRoute
+    }
     '/app/chapter/$chapterId': {
       id: '/app/chapter/$chapterId'
       path: '/chapter/$chapterId'
@@ -396,6 +451,20 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface AppNotebookRouteChildren {
+  AppNotebookNoteIdRoute: typeof AppNotebookNoteIdRoute
+  AppNotebookIndexRoute: typeof AppNotebookIndexRoute
+}
+
+const AppNotebookRouteChildren: AppNotebookRouteChildren = {
+  AppNotebookNoteIdRoute: AppNotebookNoteIdRoute,
+  AppNotebookIndexRoute: AppNotebookIndexRoute,
+}
+
+const AppNotebookRouteWithChildren = AppNotebookRoute._addFileChildren(
+  AppNotebookRouteChildren,
+)
 
 interface AppQuizzesQuizIdRouteChildren {
   AppQuizzesQuizIdResultsRoute: typeof AppQuizzesQuizIdResultsRoute
@@ -427,6 +496,7 @@ const AppQuizzesRouteWithChildren = AppQuizzesRoute._addFileChildren(
 interface AppRouteChildren {
   AppConceptMapRoute: typeof AppConceptMapRoute
   AppLeaderboardRoute: typeof AppLeaderboardRoute
+  AppNotebookRoute: typeof AppNotebookRouteWithChildren
   AppPlannerRoute: typeof AppPlannerRoute
   AppQuizzesRoute: typeof AppQuizzesRouteWithChildren
   AppSettingsRoute: typeof AppSettingsRoute
@@ -440,6 +510,7 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppConceptMapRoute: AppConceptMapRoute,
   AppLeaderboardRoute: AppLeaderboardRoute,
+  AppNotebookRoute: AppNotebookRouteWithChildren,
   AppPlannerRoute: AppPlannerRoute,
   AppQuizzesRoute: AppQuizzesRouteWithChildren,
   AppSettingsRoute: AppSettingsRoute,

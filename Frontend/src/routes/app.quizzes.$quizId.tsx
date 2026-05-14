@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
@@ -22,7 +22,6 @@ type QuizPayload = {
 
 function TakeQuizPage() {
   const { quizId } = Route.useParams();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: me } = useMe();
   const [idx, setIdx] = useState(0);
@@ -63,7 +62,12 @@ function TakeQuizPage() {
         },
         body: JSON.stringify({ answers: finalAnswers }),
       });
-      const body = await parseApiJson<{ score: number; total: number; error?: string; alreadyCompleted?: boolean }>(res);
+      const body = await parseApiJson<{
+        score: number;
+        total: number;
+        error?: string;
+        alreadyCompleted?: boolean;
+      }>(res);
       if (!res.ok) throw new Error(body.error || "Submit failed");
       return body;
     },
@@ -104,8 +108,38 @@ function TakeQuizPage() {
   }
 
   if (done && result) {
-    navigate({ to: "/app" });
-    return null;
+    const pct = Math.round((result.score / result.total) * 100);
+    return (
+      <div className="p-6 lg:p-10 max-w-2xl mx-auto space-y-6">
+        <Link
+          to="/app/quizzes"
+          className="inline-flex items-center gap-2 text-sm font-bold text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="w-4 h-4" /> All quizzes
+        </Link>
+        <div className="clay-lg bg-card p-6 space-y-2">
+          <div className="text-xs font-bold text-primary">{quiz.subject}</div>
+          <h1 className="text-2xl font-black">{quiz.title}</h1>
+        </div>
+        <div className="clay-lg bg-card p-8 text-center space-y-4">
+          <div
+            className={cn(
+              "text-6xl font-black",
+              pct >= 70 ? "text-emerald-500" : pct >= 50 ? "text-amber-500" : "text-rose-500",
+            )}
+          >
+            {result.score}/{result.total}
+          </div>
+          <p className="text-xl font-bold">
+            {pct >= 70 ? "Great job!" : pct >= 50 ? "Good effort!" : "Keep practicing!"}
+          </p>
+          <p className="text-muted-foreground font-medium">{pct}% correct</p>
+          <Link to="/app/quizzes">
+            <ClayButton>Back to quizzes</ClayButton>
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   const cur = qs[idx];
@@ -125,7 +159,10 @@ function TakeQuizPage() {
 
   return (
     <div className="p-6 lg:p-10 max-w-2xl mx-auto space-y-6">
-      <Link to="/app/quizzes" className="inline-flex items-center gap-2 text-sm font-bold text-muted-foreground hover:text-foreground">
+      <Link
+        to="/app/quizzes"
+        className="inline-flex items-center gap-2 text-sm font-bold text-muted-foreground hover:text-foreground"
+      >
         <ArrowLeft className="w-4 h-4" /> All quizzes
       </Link>
 
@@ -143,7 +180,10 @@ function TakeQuizPage() {
       ) : (
         <>
           <div className="clay-sm bg-card h-3 rounded-full overflow-hidden">
-            <div className="h-full gradient-primary transition-all" style={{ width: `${progress}%` }} />
+            <div
+              className="h-full gradient-primary transition-all"
+              style={{ width: `${progress}%` }}
+            />
           </div>
           <div className="clay-lg bg-card p-8 space-y-6">
             <p className="text-sm font-bold text-muted-foreground">
@@ -158,7 +198,9 @@ function TakeQuizPage() {
                   onClick={() => setPicked(i)}
                   className={cn(
                     "min-h-14 rounded-2xl font-bold text-left px-5 py-3 transition-all",
-                    picked === i ? "gradient-primary text-white glow-purple scale-[1.02]" : "clay-sm bg-card hover:-translate-y-0.5",
+                    picked === i
+                      ? "gradient-primary text-white glow-purple scale-[1.02]"
+                      : "clay-sm bg-card hover:-translate-y-0.5",
                   )}
                 >
                   <span className="opacity-70 mr-2">{String.fromCharCode(65 + i)}.</span>
@@ -166,7 +208,12 @@ function TakeQuizPage() {
                 </button>
               ))}
             </div>
-            <ClayButton size="lg" className="w-full" disabled={picked === null || submitMut.isPending} onClick={next}>
+            <ClayButton
+              size="lg"
+              className="w-full"
+              disabled={picked === null || submitMut.isPending}
+              onClick={next}
+            >
               {submitMut.isPending ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : idx < qs.length - 1 ? (
