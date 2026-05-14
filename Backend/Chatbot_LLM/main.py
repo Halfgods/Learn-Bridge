@@ -4,6 +4,12 @@ import logging
 import os
 import uvicorn
 from collections import defaultdict
+from pathlib import Path
+
+# Load .env from the parent Backend/ directory so GEMINI_API_KEYS etc. are available.
+# Works regardless of where uvicorn is launched from.
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 import httpx
 from google import genai

@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, make_response
+from flask import Flask, jsonify, request, make_response, Response
 from flask_cors import CORS
 from pymongo import MongoClient
 from pymongo.errors import ConfigurationError
@@ -9,6 +9,8 @@ from functools import wraps
 import jwt
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
+import difflib
+import requests as req_lib
 # Load environment variables from this file's directory (works regardless of cwd)
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 app = Flask(__name__)
@@ -169,9 +171,82 @@ def get_chapters(std, subject_name):
 # ==========================================
 # CONTENT ROUTES
 # ==========================================
+
+def _fuzzy_find_pdf(std: int, subject_name: str, chapter_name: str):
+    """
+    Find the best-matching PDF document using a two-pass approach:
+    1. Exact match (fast)
+    2. Case-insensitive regex match
+    3. Fuzzy token-overlap scoring across all docs for that std+subject
+    Returns the MongoDB doc or None.
+    """
+    # Pass 1: exact
+    doc = pdfs_collection.find_one(
+        {'std': std, 'subjectName': subject_name, 'chapterName': chapter_name},
+        {'_id': 0, 'ncertUrl': 1, 'chapterName': 1}
+    )
+    if doc:
+        return doc
+
+    # Pass 2: case-insensitive exact
+    doc = pdfs_collection.find_one(
+        {
+            'std': std,
+            'subjectName': re.compile(f'^{re.escape(subject_name)}$', re.I),
+            'chapterName': re.compile(f'^{re.escape(chapter_name)}$', re.I),
+        },
+        {'_id': 0, 'ncertUrl': 1, 'chapterName': 1}
+    )
+    if doc:
+        return doc
+
+    # Pass 3: fuzzy — score every chapter in this std+subject and pick best
+    candidates = list(pdfs_collection.find(
+        {
+            'std': std,
+            'subjectName': re.compile(f'^{re.escape(subject_name)}$', re.I),
+        },
+        {'_id': 0, 'ncertUrl': 1, 'chapterName': 1}
+    ))
+    if not candidates:
+        # Try without subject filter (broad search)
+        candidates = list(pdfs_collection.find(
+            {'std': std},
+            {'_id': 0, 'ncertUrl': 1, 'chapterName': 1}
+        ))
+
+    if not candidates:
+        return None
+
+    query_norm = chapter_name.lower().strip()
+
+    def score(db_name: str) -> float:
+        db_norm = db_name.lower().strip()
+        # SequenceMatcher ratio (char-level)
+        seq_ratio = difflib.SequenceMatcher(None, query_norm, db_norm).ratio()
+        # Token overlap (word-level Jaccard)
+        q_words = set(re.findall(r'\w+', query_norm))
+        d_words = set(re.findall(r'\w+', db_norm))
+        if not q_words or not d_words:
+            token_score = 0.0
+        else:
+            intersection = q_words & d_words
+            union = q_words | d_words
+            token_score = len(intersection) / len(union)
+        return 0.45 * seq_ratio + 0.55 * token_score
+
+    best = max(candidates, key=lambda d: score(d.get('chapterName', '')))
+    best_score = score(best.get('chapterName', ''))
+
+    # Require a minimum match quality of 35% to avoid wild mismatches
+    if best_score < 0.35:
+        return None
+
+    return best
+
+
 @app.route('/api/content/pdf', methods=['GET'])
 def get_chapter_pdf():
-    # Expecting query parameters: ?std=1&subjectName=Mathematics&chapterName=Shapes and Space
     std = request.args.get('std', type=int)
     subject_name = request.args.get('subjectName')
     chapter_name = request.args.get('chapterName')
@@ -180,25 +255,67 @@ def get_chapter_pdf():
     subject_name = subject_name.strip()
     chapter_name = " ".join(chapter_name.split())
     try:
-        pdf_doc = pdfs_collection.find_one({
-            'std': std,
-            'subjectName': subject_name,
-            'chapterName': chapter_name
-        }, {'_id': 0, 'ncertUrl': 1})
-
-        if not pdf_doc:
-            pdf_doc = pdfs_collection.find_one({
-                'std': std,
-                'subjectName': re.compile(f'^{re.escape(subject_name)}$', re.I),
-                'chapterName': re.compile(f'^{re.escape(chapter_name)}$', re.I),
-            }, {'_id': 0, 'ncertUrl': 1})
-
+        pdf_doc = _fuzzy_find_pdf(std, subject_name, chapter_name)
         if not pdf_doc:
             return jsonify({"error": "PDF not found"}), 404
-
-        return jsonify({"ncertUrl": pdf_doc.get('ncertUrl')}), 200
+        return jsonify({
+            "ncertUrl": pdf_doc.get('ncertUrl'),
+            "matchedChapter": pdf_doc.get('chapterName'),
+        }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/content/pdf/proxy', methods=['GET'])
+def proxy_pdf():
+    """
+    Fetch the NCERT PDF server-side and stream it back to the browser.
+    This bypasses the X-Frame-Options / CORS restrictions that NCERT sets
+    on direct browser requests.
+
+    Query params: same as /api/content/pdf  (std, subjectName, chapterName)
+    Optional: ?url=<direct ncertUrl> to skip DB lookup
+    """
+    direct_url = request.args.get('url')
+
+    if direct_url:
+        ncert_url = direct_url
+    else:
+        std = request.args.get('std', type=int)
+        subject_name = request.args.get('subjectName')
+        chapter_name = request.args.get('chapterName')
+        if not all([std, subject_name, chapter_name]):
+            return jsonify({"error": "Missing required parameters"}), 400
+        subject_name = subject_name.strip()
+        chapter_name = " ".join(chapter_name.split())
+        pdf_doc = _fuzzy_find_pdf(std, subject_name, chapter_name)
+        if not pdf_doc:
+            return jsonify({"error": "PDF not found"}), 404
+        ncert_url = pdf_doc.get('ncertUrl')
+
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
+            'Referer': 'https://ncert.nic.in/',
+        }
+        upstream = req_lib.get(ncert_url, headers=headers, timeout=30, stream=True)
+        upstream.raise_for_status()
+
+        def generate():
+            for chunk in upstream.iter_content(chunk_size=8192):
+                if chunk:
+                    yield chunk
+
+        response = Response(
+            generate(),
+            status=upstream.status_code,
+            content_type='application/pdf',
+        )
+        response.headers['Content-Disposition'] = 'inline'
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response
+    except req_lib.RequestException as e:
+        return jsonify({"error": f"Failed to fetch PDF: {e}"}), 502
 @app.route('/api/content/related', methods=['GET'])
 def get_related_concepts():
     std = request.args.get('std', type=int)

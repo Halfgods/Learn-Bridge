@@ -51,7 +51,10 @@ function Chapter() {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.error || "Failed to load PDF");
       }
-      return res.json();
+      const json = await res.json();
+      // Build the proxy URL — served by our own Flask backend so no X-Frame-Options block
+      const proxyUrl = apiPath(`/api/content/pdf/proxy?url=${encodeURIComponent(json.ncertUrl)}`);
+      return { ...json, proxyUrl };
     }
   });
 
@@ -81,7 +84,14 @@ function Chapter() {
       {/* PDF viewer */}
       <section className="clay-lg bg-card p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="font-extrabold flex items-center gap-2"><FileText className="w-4 h-4 text-primary"/> PDF Viewer</h2>
+          <div>
+            <h2 className="font-extrabold flex items-center gap-2"><FileText className="w-4 h-4 text-primary"/>PDF Viewer</h2>
+            {data?.matchedChapter && data.matchedChapter !== title && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Showing closest match: <span className="font-bold text-foreground">{data.matchedChapter}</span>
+              </p>
+            )}
+          </div>
           <div className="flex gap-2">
             <button className="h-9 w-9 rounded-xl clay-sm bg-card flex items-center justify-center"><ZoomOut className="w-4 h-4"/></button>
             <button className="h-9 w-9 rounded-xl clay-sm bg-card flex items-center justify-center"><ZoomIn className="w-4 h-4"/></button>
@@ -90,14 +100,14 @@ function Chapter() {
         <div className="aspect-[4/5] sm:aspect-[16/10] rounded-2xl clay-pressed bg-gradient-to-br from-muted to-card flex items-center justify-center relative overflow-hidden">
           {isLoading && <Loader2 className="w-8 h-8 animate-spin text-primary"/>}
           {error && <div className="text-destructive font-bold p-4 text-center">{(error as Error).message}</div>}
-          {!isLoading && !error && data?.ncertUrl && (
+          {!isLoading && !error && data?.proxyUrl && (
             <iframe 
-              src={data.ncertUrl} 
+              src={data.proxyUrl} 
               className="w-full h-full border-0" 
-              title={title}
+              title={data.matchedChapter || title}
             />
           )}
-          {!isLoading && !error && !data?.ncertUrl && (
+          {!isLoading && !error && !data?.proxyUrl && (
             <div className="text-muted-foreground font-bold p-4 text-center">PDF not available for this chapter.</div>
           )}
         </div>
