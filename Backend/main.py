@@ -995,7 +995,7 @@ def create_teacher_quiz(current_user):
         "createdAt": datetime.datetime.utcnow(),
     }
     teacher_quizzes_collection.insert_one(doc)
-    resp = {k: v for k, v in doc.items()}
+    resp = {k: v for k, v in doc.items() if k != "_id"}
     resp["deadline"] = _iso_dt(resp.get("deadline"))
     resp["createdAt"] = _iso_dt(resp.get("createdAt"))
     return jsonify({"quiz": resp}), 201
@@ -1623,7 +1623,7 @@ def get_random_assessment():
                 assessment_questions.append({
                     "q": question.get("q"),
                     "options": question.get("options", []),
-                    "correct": question.get("ans", 0),
+                    "correct": question.get("correct", 0),
                     "subject": quiz.get("subjectName", "General")
                 })
         

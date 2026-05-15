@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouterState } from "@tanstack/react-router";
 import {
   Bot,
@@ -12,7 +12,7 @@ import {
   ZoomOut,
   Brain,
   BookOpen,
-  Loader2,
+  Square,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ClayButton } from "./ClayButton";
@@ -110,6 +110,7 @@ export function ChatbotPanel() {
   const [isSending, setIsSending] = useState(false);
   const [zoomed, setZoomed] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
+  const abortRef = useRef<AbortController | null>(null);
   const { subject, chapter } = useSubjectContext();
 
   useEffect(() => {
@@ -125,7 +126,8 @@ export function ChatbotPanel() {
     if (!raw || isSending) return;
 
     const deep = /^\/thinking(\s|$)/i.test(raw);
-    const stripped = raw.replace(/^\/thinking\s*/i, "").trim();
+    const diagrams = /^\/diagrams(\s|$)/i.test(raw);
+    const stripped = raw.replace(/^\/thinking\s*/i, "").replace(/^\/diagrams\s*/i, "").trim();
     let queryForApi = stripped || raw;
 
     // Prepend subject/chapter context so Ollama knows the current lesson
@@ -145,6 +147,12 @@ export function ChatbotPanel() {
     const aiId = `a-${Date.now()}`;
     setMessages((m) => [...m, { id: aiId, role: "ai", text: "" }]);
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    let thinkingAcc = "";
+    let replyAcc = "";
+
     try {
       const url =
         `${tutorPath("/chat")}` +
@@ -152,7 +160,7 @@ export function ChatbotPanel() {
         `&session_id=${encodeURIComponent(NOVA_SESSION_ID)}` +
         `&deep_research=${deep}`;
 
-      const res = await fetch(url, { method: "POST" });
+      const res = await fetch(url, { method: "POST", signal: controller.signal });
 
       if (!res.ok || !res.body) {
         const errData = await res.json().catch(() => ({})) as { detail?: string; error?: string };
@@ -173,8 +181,6 @@ export function ChatbotPanel() {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
-      let thinkingAcc = "";
-      let replyAcc = "";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -240,22 +246,56 @@ export function ChatbotPanel() {
           )
         );
       }
-    } catch {
-      setMessages((m) =>
-        m.map((msg) =>
-          msg.id === aiId
-            ? {
-                ...msg,
-                text: "Could not reach the tutor service. From Backend/Chatbot_LLM run: python main.py",
-                isError: true,
-              }
-            : msg
-        )
-      );
+
+      // If /diagrams was used, fetch an image from the scrapper
+      if (diagrams && replyAcc.trim()) {
+        fetch(`/imglinks?query=${encodeURIComponent(stripped || raw)}`)
+          .then((r) => r.json())
+          .then((data) => {
+            const imgs = data?.images;
+            if (imgs && imgs.length > 0) {
+              setMessages((m) =>
+                m.map((msg) =>
+                  msg.id === aiId ? { ...msg, image: imgs[0] } : msg
+                )
+              );
+            }
+          })
+          .catch(() => {});
+      }
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setMessages((m) =>
+          m.map((msg) =>
+            msg.id === aiId
+              ? { ...msg, text: replyAcc || "(interrupted)", thinking: thinkingAcc || undefined }
+              : msg
+          )
+        );
+      } else {
+        setMessages((m) =>
+          m.map((msg) =>
+            msg.id === aiId
+              ? {
+                  ...msg,
+                  text: "Could not reach the tutor service. From Backend/Chatbot_LLM run: python main.py",
+                  isError: true,
+                }
+              : msg
+          )
+        );
+      }
     } finally {
       setIsSending(false);
+      abortRef.current = null;
     }
   }, [input, isSending]);
+
+  const interrupt = useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+    }
+  }, []);
 
   return (
     <>
@@ -312,7 +352,7 @@ export function ChatbotPanel() {
           <div className="px-4 py-2.5 flex gap-2 overflow-x-auto border-b border-border/40 shrink-0 bg-card/30">
             {[
               { icon: Brain, label: "/thinking", color: "gradient-primary text-white" },
-              { icon: BookOpen, label: "/study", color: "gradient-cyan text-white" },
+              { icon: ImageIcon, label: "/diagrams", color: "gradient-cyan text-white" },
               { icon: Sparkles, label: "/quiz", color: "gradient-yellow text-amber-900" },
             ].map((m) => (
               <button
@@ -335,22 +375,17 @@ export function ChatbotPanel() {
               <EmptyIntro />
             ) : (
               <>
-                {messages.map((m) => (
+                {messages.map((m, idx) => (
                   <MessageBubble
                     key={m.id}
                     m={m}
+                    streaming={isSending && idx === messages.length - 1}
                     onImage={(src) => {
                       setZoomed(src);
                       setZoom(1);
                     }}
                   />
                 ))}
-                {isSending && (
-                  <div className="flex gap-2 text-muted-foreground text-sm px-1 pb-2">
-                    <Loader2 className="w-4 h-4 shrink-0 animate-spin mt-0.5" aria-hidden />
-                    <span>Nova is thinking…</span>
-                  </div>
-                )}
               </>
             )}
           </div>
@@ -387,15 +422,25 @@ export function ChatbotPanel() {
                 disabled={isSending}
                 aria-label="Message to Nova"
               />
-              <ClayButton
-                size="icon"
-                className="shrink-0 self-end mb-0.5"
-                onClick={() => void send()}
-                aria-label="Send"
-                disabled={isSending}
-              >
-                <Send className="w-4 h-4" />
-              </ClayButton>
+              {isSending ? (
+                <button
+                  type="button"
+                  onClick={interrupt}
+                  className="shrink-0 self-end mb-0.5 h-10 w-10 rounded-xl bg-destructive text-destructive-foreground flex items-center justify-center hover:bg-destructive/90 transition-colors"
+                  aria-label="Stop generating"
+                >
+                  <Square className="w-4 h-4 fill-current" />
+                </button>
+              ) : (
+                <ClayButton
+                  size="icon"
+                  className="shrink-0 self-end mb-0.5"
+                  onClick={() => void send()}
+                  aria-label="Send"
+                >
+                  <Send className="w-4 h-4" />
+                </ClayButton>
+              )}
             </div>
           </div>
         </div>
@@ -453,7 +498,36 @@ export function ChatbotPanel() {
   );
 }
 
-function MessageBubble({ m, onImage }: { m: Message; onImage: (src: string) => void }) {
+function ThinkingBlock({ thinking, defaultOpen }: { thinking: string; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen ?? false);
+
+  if (!thinking.trim()) return null;
+
+  return (
+    <div className="rounded-2xl rounded-tl-sm border border-violet-200 dark:border-violet-800 bg-violet-50/60 dark:bg-violet-950/30 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 w-full text-left not-italic font-bold text-[10px] uppercase tracking-wide text-violet-600 dark:text-violet-400 mb-1"
+      >
+        <ChevronRight
+          className={cn(
+            "w-3 h-3 transition-transform duration-200",
+            open && "rotate-90",
+          )}
+        />
+        Reasoning
+      </button>
+      {open && (
+        <div className="break-words whitespace-pre-wrap border-t border-violet-200/50 dark:border-violet-800/50 pt-1.5 mt-1">
+          {renderTutorMarkdown(thinking)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MessageBubble({ m, onImage, streaming }: { m: Message; onImage: (src: string) => void; streaming?: boolean }) {
   if (m.role === "user") {
     return (
       <div className="flex justify-end">
@@ -470,16 +544,7 @@ function MessageBubble({ m, onImage }: { m: Message; onImage: (src: string) => v
       </div>
       <div className="flex-1 min-w-0 space-y-2">
         {m.thinking && !m.isError && (
-          <div
-            className="rounded-2xl rounded-tl-sm border border-border/60 bg-muted/40 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground italic"
-            role="region"
-            aria-label="Reasoning"
-          >
-            <div className="not-italic font-bold text-[10px] uppercase tracking-wide text-muted-foreground/80 mb-1.5">
-              Reasoning
-            </div>
-            <div className="break-words whitespace-pre-wrap">{renderTutorMarkdown(m.thinking)}</div>
-          </div>
+          <ThinkingBlock thinking={m.thinking} defaultOpen={streaming} />
         )}
         <div
           className={cn(

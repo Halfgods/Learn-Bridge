@@ -10,13 +10,13 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variants: Record<Variant, string> = {
-  primary: "gradient-primary text-primary-foreground glow-purple",
+  primary: "gradient-primary text-white glow-purple",
   cyan: "gradient-cyan text-white",
   yellow: "gradient-yellow text-amber-900",
   peach: "gradient-peach text-orange-900",
   mint: "gradient-mint text-emerald-900",
   ghost: "bg-transparent text-foreground hover:bg-muted",
-  white: "bg-card text-foreground",
+  white: "bg-card text-foreground dark:border dark:border-muted",
 };
 
 const sizes: Record<Size, string> = {

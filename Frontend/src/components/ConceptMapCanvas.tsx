@@ -114,10 +114,12 @@ function renderGraph(
 
   const simulation = d3
     .forceSimulation(nodeData)
-    .force("link", d3.forceLink(links).id((d: any) => d.id).distance(150))
-    .force("charge", d3.forceManyBody().strength(-400))
+    .alphaDecay(0.015)
+    .velocityDecay(0.3)
+    .force("link", d3.forceLink(links).id((d: any) => d.id).distance(120))
+    .force("charge", d3.forceManyBody().strength(-250))
     .force("center", d3.forceCenter(width / 2, height / 2))
-    .force("collision", d3.forceCollide(45));
+    .force("collision", d3.forceCollide(35));
 
   const link = container
     .append("g")
