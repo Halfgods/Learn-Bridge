@@ -69,6 +69,10 @@ def is_keyboard_smash(text: str) -> bool:
     """Detect random keyboard smashing."""
     text = text.lower().strip()
 
+    # Allow quiz answer patterns like "1A 2B 3C 4D 5A" or "A B C D"
+    if re.match(r'^(\d+\s*[a-d]\s*)+$', text, re.IGNORECASE):
+        return False
+
     # Very short nonsense
     if len(text) <= 2:
         return True

@@ -148,11 +148,12 @@ export function ChatbotPanel() {
 
     if (quiz) {
       queryForApi =
-        `Create exactly 5 multiple-choice questions about "${queryForApi}". ` +
-        `Each question must have 4 options labeled A, B, C, D. ` +
-        `After listing all 5 questions, wait for my answers. ` +
-        `I will reply with the letter (A, B, C, or D) for each question. ` +
-        `After each answer, tell me if it's correct or wrong and briefly explain why.`;
+        `You are a quiz generator. Create exactly 5 multiple-choice questions about "${queryForApi}".\n\n` +
+        `Format each question like this (no extra text before/after):\n` +
+        `1. Question text\n` +
+        `A) Option 1\nB) Option 2\nC) Option 3\nD) Option 4\n\n` +
+        `After all 5 questions, wait for my answers. I will reply with all answers at once like "1A 2B 3C 4D 5A".\n` +
+        `Then tell me which were correct/wrong with brief explanations.`;
     }
 
     // Prepend subject/chapter context so Ollama knows the current lesson
@@ -273,7 +274,7 @@ export function ChatbotPanel() {
               break;
             }
 
-            if (chunk.notice && !replyAcc && !thinkingAcc) {
+            if (chunk.notice && !replyAcc && !thinkingAcc && !quiz) {
               replyAcc = "📝 " + chunk.notice + "\n\n";
               flush();
             }
