@@ -333,3 +333,14 @@
   0%   { transform: scale(0.8); opacity: 0; }
   100% { transform: scale(1);   opacity: 1; }
 }
+
+text {
+  fill: #111827 !important;
+}
+.dark text {
+  fill: #f9fafb !important;
+}
+text.node-score,
+.dark text.node-score {
+  fill: #111827 !important;
+}

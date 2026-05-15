@@ -184,7 +184,8 @@ function renderGraph(
     .attr("font-size", "10px")
     .attr("font-weight", "900")
     .attr("fill", (d) => (d.score >= 0 ? "#1F2937" : "#9CA3AF"))
-    .attr("font-family", "inherit");
+    .attr("font-family", "inherit")
+    .attr("class", "node-score");
 
   node.on("click", (_event, d) => {
     if (onNodeClick) onNodeClick(d);

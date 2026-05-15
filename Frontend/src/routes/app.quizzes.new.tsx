@@ -142,7 +142,7 @@ function NewQuizPage() {
             <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
             <input
               type="datetime-local"
-              className="bg-transparent outline-none flex-1 font-bold text-sm [color-scheme:dark] dark:[color-scheme:dark]"
+              className="bg-transparent outline-none flex-1 font-bold text-sm [color-scheme:light] dark:[color-scheme:dark]"
               value={deadline}
               onChange={(e) => setDeadline(e.target.value)}
             />

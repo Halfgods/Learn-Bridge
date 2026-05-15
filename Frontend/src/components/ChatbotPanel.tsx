@@ -3,7 +3,6 @@ import { useRouterState } from "@tanstack/react-router";
 import {
   Bot,
   Send,
-  Mic,
   Image as ImageIcon,
   Sparkles,
   X,
@@ -550,21 +549,7 @@ export function ChatbotPanel() {
 
           {/* Composer */}
           <div className="p-3 border-t border-border/50 shrink-0">
-            <div className="clay-pressed rounded-2xl p-2 flex items-end gap-1">
-              <button
-                type="button"
-                className="h-9 w-9 shrink-0 rounded-xl flex items-center justify-center hover:bg-muted self-end mb-0.5"
-                aria-label="Attach image"
-              >
-                <ImageIcon className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                className="h-9 w-9 shrink-0 rounded-xl flex items-center justify-center hover:bg-muted self-end mb-0.5"
-                aria-label="Voice input"
-              >
-                <Mic className="w-4 h-4" />
-              </button>
+            <div className="clay-pressed rounded-2xl p-1 flex items-center gap-1">
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -575,8 +560,8 @@ export function ChatbotPanel() {
                   }
                 }}
                 placeholder="Ask Nova anything…"
-                rows={2}
-                className="flex-1 min-h-[2.75rem] max-h-[10rem] resize-y bg-transparent outline-none text-sm font-medium px-2 py-2 leading-snug break-words whitespace-pre-wrap"
+                rows={1}
+                className="flex-1 max-h-32 bg-transparent outline-none resize-none text-sm font-medium px-3 py-2 leading-normal"
                 disabled={isSending}
                 aria-label="Message to Nova"
               />
@@ -704,6 +689,15 @@ function MessageBubble({ m, onImage, streaming }: { m: Message; onImage: (src: s
         {m.thinking && !m.isError && (
           <ThinkingBlock thinking={m.thinking} defaultOpen={streaming} />
         )}
+        {m.image && (
+          <button
+            type="button"
+            onClick={() => onImage(m.image!)}
+            className="block w-full clay-sm rounded-2xl overflow-hidden hover:-translate-y-0.5 transition-transform"
+          >
+            <img src={m.image} alt="AI illustration" className="w-full h-40 object-cover" />
+          </button>
+        )}
         <div
           className={cn(
             "rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed break-words whitespace-pre-wrap",
@@ -714,15 +708,6 @@ function MessageBubble({ m, onImage, streaming }: { m: Message; onImage: (src: s
         >
           {renderTutorMarkdown(m.text)}
         </div>
-        {m.image && (
-          <button
-            type="button"
-            onClick={() => onImage(m.image!)}
-            className="block w-full clay-sm rounded-2xl overflow-hidden hover:-translate-y-0.5 transition-transform"
-          >
-            <img src={m.image} alt="AI illustration" className="w-full h-40 object-cover" />
-          </button>
-        )}
         {(m.confidence || m.sources) && (
           <div className="flex items-center gap-2 px-1 text-xs">
             {m.confidence && (

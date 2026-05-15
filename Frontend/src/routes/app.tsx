@@ -17,7 +17,7 @@ function AppLayout() {
         <Outlet />
       </main>
       <ChatbotPanel />
-      <ThemeToggle className="fixed top-4 right-4 z-[60]" />
+      <ThemeToggle className="fixed top-4 right-4 z-30" />
     </div>
   );
 }

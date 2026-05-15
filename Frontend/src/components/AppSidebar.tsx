@@ -63,7 +63,7 @@ export function AppSidebar() {
             isOpen ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0 mt-0",
           )}
         >
-          <div className="overflow-hidden">
+          <div className="">
             <nav className="clay-lg p-2 flex flex-col gap-2">
               {items.map((it) => {
                 const active = it.exact ? path === it.to : path.startsWith(it.to);
