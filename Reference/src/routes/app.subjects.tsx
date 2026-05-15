@@ -61,7 +61,7 @@ function SubjectsPage() {
               <div className={cn("h-14 w-14 rounded-2xl flex items-center justify-center clay-sm mb-4", m.gradient, m.text)}>
                 <m.icon className="w-7 h-7" />
               </div>
-              <h2 className={cn("font-extrabold text-lg", m.text)}>{name}</h2>
+              <h2 className="font-extrabold text-lg">{name}</h2>
               <div className="mt-auto pt-4 flex items-center justify-between text-sm font-bold text-primary">
                 Open <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </div>

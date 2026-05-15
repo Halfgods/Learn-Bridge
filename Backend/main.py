@@ -81,6 +81,7 @@ chapter_attempts_collection = db["chapter_attempts"]
 concept_graphs_collection = db["concept_graphs"]
 chapter_pdfs_collection = db["chapter_pdfs"]
 chapter_teacher_quizzes_collection = db["chapter_teacher_quizzes"]
+chat_sessions_collection = db["chat_sessions"]
 
 TEACHER_ACCESS_CODE = (os.environ.get("TEACHER_ACCESS_CODE") or "NOVA-TEACHER").strip()
 
@@ -1633,6 +1634,65 @@ def get_random_assessment():
         return jsonify({"questions": assessment_questions}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# ── Chat Sessions API ──────────────────────────────────────────────
+@app.route("/api/chat/sessions", methods=["GET"])
+@token_required
+def list_chat_sessions(current_user):
+    cursor = chat_sessions_collection.find(
+        {"userEmail": current_user["email"]},
+        {"_id": 0, "messages": 0},
+    ).sort("updatedAt", -1)
+    return jsonify({"sessions": list(cursor)}), 200
+
+
+@app.route("/api/chat/sessions/<session_id>", methods=["GET"])
+@token_required
+def get_chat_session(current_user, session_id):
+    doc = chat_sessions_collection.find_one(
+        {"sessionId": session_id, "userEmail": current_user["email"]},
+        {"_id": 0},
+    )
+    if not doc:
+        return jsonify({"error": "Session not found"}), 404
+    return jsonify(doc), 200
+
+
+@app.route("/api/chat/sessions", methods=["POST"])
+@token_required
+def save_chat_session(current_user):
+    body = request.get_json(silent=True) or {}
+    session_id = body.get("sessionId")
+    title = body.get("title") or "Chat session"
+    messages = body.get("messages") or []
+    if not session_id:
+        return jsonify({"error": "sessionId is required"}), 400
+    now = datetime.datetime.utcnow().isoformat()
+    chat_sessions_collection.update_one(
+        {"sessionId": session_id, "userEmail": current_user["email"]},
+        {"$set": {
+            "title": title,
+            "messages": messages,
+            "updatedAt": now,
+        }, "$setOnInsert": {
+            "sessionId": session_id,
+            "userEmail": current_user["email"],
+            "createdAt": now,
+        }},
+        upsert=True,
+    )
+    return jsonify({"status": "saved"}), 200
+
+
+@app.route("/api/chat/sessions/<session_id>", methods=["DELETE"])
+@token_required
+def delete_chat_session(current_user, session_id):
+    chat_sessions_collection.delete_one(
+        {"sessionId": session_id, "userEmail": current_user["email"]},
+    )
+    return jsonify({"status": "deleted"}), 200
+
+
 if __name__ == '__main__':
     # Run the application
     app.run(host='0.0.0.0', port=5000, debug=True)

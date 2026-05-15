@@ -133,7 +133,7 @@ export function ChatbotPanel() {
         .then((d) => {
           if (d.sessions) setPastSessions(d.sessions);
         })
-        .catch(() => {});
+        .catch(() => { });
     }
   }, []);
 
@@ -238,10 +238,10 @@ export function ChatbotPanel() {
                 m.map((msg) =>
                   msg.id === aiId
                     ? {
-                        ...msg,
-                        text: replyAcc || "…",
-                        thinking: thinkingAcc || undefined,
-                      }
+                      ...msg,
+                      text: replyAcc || "…",
+                      thinking: thinkingAcc || undefined,
+                    }
                     : msg
                 )
               );
@@ -278,7 +278,7 @@ export function ChatbotPanel() {
               );
             }
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === "AbortError") {
@@ -294,10 +294,10 @@ export function ChatbotPanel() {
           m.map((msg) =>
             msg.id === aiId
               ? {
-                  ...msg,
-                  text: "Could not reach the tutor service. From Backend/Chatbot_LLM run: python main.py",
-                  isError: true,
-                }
+                ...msg,
+                text: "Could not reach the tutor service. From Backend/Chatbot_LLM run: python main.py",
+                isError: true,
+              }
               : msg
           )
         );
@@ -328,7 +328,7 @@ export function ChatbotPanel() {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body,
-      }).catch(() => {});
+      }).catch(() => { });
     }
     // Also save as notebook note (localStorage)
     try {
@@ -343,7 +343,7 @@ export function ChatbotPanel() {
         updatedAt: new Date().toISOString(),
       });
       localStorage.setItem(NOTEBOOK_KEY, JSON.stringify(notes));
-    } catch {}
+    } catch { }
   }, [messages, sessionId]);
 
   const newChat = useCallback(() => {
@@ -357,7 +357,7 @@ export function ChatbotPanel() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ session_id: newId }),
-    }).catch(() => {});
+    }).catch(() => { });
     // Refresh past sessions list
     const token = localStorage.getItem("token");
     if (token) {
@@ -368,7 +368,7 @@ export function ChatbotPanel() {
         .then((d) => {
           if (d.sessions) setPastSessions(d.sessions);
         })
-        .catch(() => {});
+        .catch(() => { });
     }
   }, [saveSession]);
 
@@ -390,7 +390,7 @@ export function ChatbotPanel() {
       {/* Panel */}
       <aside
         className={cn(
-          "fixed top-0 right-0 z-50 h-screen w-full sm:w-[420px] p-3 sm:p-4 transition-all duration-500 ease-in-out",
+          "fixed top-0 right-0 z-40 h-screen w-full sm:w-[420px] p-3 sm:p-4 transition-all duration-500 ease-in-out",
           open ? "translate-x-0 opacity-100 shadow-[-10px_0_30px_rgba(0,0,0,0.1)]" : "translate-x-full opacity-0 pointer-events-none",
         )}
       >
@@ -491,7 +491,7 @@ export function ChatbotPanel() {
                                 setShowPast(false);
                               }
                             })
-                            .catch(() => {});
+                            .catch(() => { });
                         }
                       }}
                       className="w-full text-left clay-sm bg-card p-3 rounded-xl hover:-translate-y-0.5 transition-all group"
@@ -512,7 +512,7 @@ export function ChatbotPanel() {
                                 .then(() => {
                                   setPastSessions((prev) => prev.filter((p) => p.sessionId !== s.sessionId));
                                 })
-                                .catch(() => {});
+                                .catch(() => { });
                             }
                           }}
                           className="h-6 w-6 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
@@ -550,7 +550,7 @@ export function ChatbotPanel() {
 
           {/* Composer */}
           <div className="p-3 border-t border-border/50 shrink-0">
-            <div className="clay-pressed rounded-2xl p-2 flex items-end gap-1">
+            <div className="clay-pressed rounded-2xl" id="textinput-cont">
               <button
                 type="button"
                 className="h-9 w-9 shrink-0 rounded-xl flex items-center justify-center hover:bg-muted self-end mb-0.5"
@@ -558,14 +558,8 @@ export function ChatbotPanel() {
               >
                 <ImageIcon className="w-4 h-4" />
               </button>
-              <button
-                type="button"
-                className="h-9 w-9 shrink-0 rounded-xl flex items-center justify-center hover:bg-muted self-end mb-0.5"
-                aria-label="Voice input"
-              >
-                <Mic className="w-4 h-4" />
-              </button>
               <textarea
+                id="textarea-message"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -575,8 +569,7 @@ export function ChatbotPanel() {
                   }
                 }}
                 placeholder="Ask Nova anything…"
-                rows={2}
-                className="flex-1 min-h-[2.75rem] max-h-[10rem] resize-y bg-transparent outline-none text-sm font-medium px-2 py-2 leading-snug break-words whitespace-pre-wrap"
+                rows={1}
                 disabled={isSending}
                 aria-label="Message to Nova"
               />

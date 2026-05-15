@@ -51,10 +51,12 @@ def is_keyboard_smash(text: str) -> bool:
     if len(text) > 5 and ratio < 0.15:
         return True
 
-    # Detect repetitive/random sequences
-    unique_ratio = len(set(text)) / len(text)
-    if len(text) > 6 and unique_ratio < 0.3:
-        return True
+    # Detect repetitive/random sequences (exclude spaces from unique ratio)
+    chars = text.replace(" ", "")
+    if len(chars) > 6:
+        unique_ratio = len(set(chars)) / len(chars)
+        if unique_ratio < 0.2:
+            return True
 
     return False
 
