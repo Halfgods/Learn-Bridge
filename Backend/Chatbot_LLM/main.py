@@ -601,12 +601,17 @@ async def chat(
     model = _select_model(cleaned_query, deep_research)
     logger.info("Chat | subject=%s chapter=%s model=%s", subject, chapter, model)
 
-    if model == _deep_model():
-        generator = _stream_deepseek(session_id, cleaned_query, model, subject=subject, chapter=chapter)
-    else:
-        generator = _stream_with_fallback(session_id, cleaned_query, model, subject=subject, chapter=chapter)
+    async def _stream_with_spelling():
+        if reason:
+            yield json.dumps({"notice": reason}) + "\n"
+        if model == _deep_model():
+            async for chunk in _stream_deepseek(session_id, cleaned_query, model, subject=subject, chapter=chapter):
+                yield chunk
+        else:
+            async for chunk in _stream_with_fallback(session_id, cleaned_query, model, subject=subject, chapter=chapter):
+                yield chunk
 
-    return StreamingResponse(generator, media_type="application/x-ndjson")
+    return StreamingResponse(_stream_with_spelling(), media_type="application/x-ndjson")
 
 
 @app.post("/chat/sync")

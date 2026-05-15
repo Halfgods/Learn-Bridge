@@ -61,7 +61,7 @@ type Message = {
   text: string;
   /** Model reasoning trace (e.g. DeepSeek `/thinking`); shown separately from the answer. */
   thinking?: string;
-  image?: string;
+  images?: string[];
   confidence?: number;
   sources?: string[];
   followups?: string[];
@@ -142,8 +142,18 @@ export function ChatbotPanel() {
 
     const deep = /^\/thinking(\s|$)/i.test(raw);
     const diagrams = /^\/diagrams(\s|$)/i.test(raw);
-    const stripped = raw.replace(/^\/thinking\s*/i, "").replace(/^\/diagrams\s*/i, "").trim();
+    const quiz = /^\/quiz(\s|$)/i.test(raw);
+    const stripped = raw.replace(/^\/thinking\s*/i, "").replace(/^\/diagrams\s*/i, "").replace(/^\/quiz\s*/i, "").trim();
     let queryForApi = stripped || raw;
+
+    if (quiz) {
+      queryForApi =
+        `Create exactly 5 multiple-choice questions about "${queryForApi}". ` +
+        `Each question must have 4 options labeled A, B, C, D. ` +
+        `After listing all 5 questions, wait for my answers. ` +
+        `I will reply with the letter (A, B, C, or D) for each question. ` +
+        `After each answer, tell me if it's correct or wrong and briefly explain why.`;
+    }
 
     // Prepend subject/chapter context so Ollama knows the current lesson
     if (subject) {
@@ -161,6 +171,27 @@ export function ChatbotPanel() {
     // Placeholder AI message that we update token-by-token
     const aiId = `a-${Date.now()}`;
     setMessages((m) => [...m, { id: aiId, role: "ai", text: "" }]);
+
+    // Fire image fetch immediately in parallel for /diagrams
+    if (diagrams) {
+      const imgQuery = [stripped || raw, chapter, subject].filter(Boolean).join(" ") + " diagram illustration";
+      (async () => {
+        try {
+          const res = await fetch(`/imglinks?query=${encodeURIComponent(imgQuery)}`);
+          const data = await res.json();
+          const imgs = data?.images;
+          if (imgs && imgs.length > 0) {
+            setMessages((m) =>
+              m.map((msg) =>
+                msg.id === aiId ? { ...msg, images: imgs } : msg
+              )
+            );
+          }
+        } catch (e) {
+          console.error("imglinks fetch failed:", e);
+        }
+      })();
+    }
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -197,6 +228,22 @@ export function ChatbotPanel() {
       const decoder = new TextDecoder();
       let buffer = "";
 
+      // Throttle live UI updates to every ~50ms for smoothness
+      let rafId: number | undefined;
+      const flush = () => {
+        rafId = undefined;
+        setMessages((m) =>
+          m.map((msg) =>
+            msg.id === aiId
+              ? { ...msg, text: replyAcc || "…", thinking: thinkingAcc || undefined }
+              : msg
+          )
+        );
+      };
+      const scheduleFlush = () => {
+        if (rafId === undefined) rafId = window.setTimeout(flush, 300);
+      };
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -226,30 +273,27 @@ export function ChatbotPanel() {
               break;
             }
 
+            if (chunk.notice && !replyAcc && !thinkingAcc) {
+              replyAcc = "📝 " + chunk.notice + "\n\n";
+              flush();
+            }
+
             if (chunk.response) {
               if (chunk.thinking) {
                 thinkingAcc += chunk.response;
               } else {
                 replyAcc += chunk.response;
               }
-              // Live update — show what we have so far
-              setMessages((m) =>
-                m.map((msg) =>
-                  msg.id === aiId
-                    ? {
-                        ...msg,
-                        text: replyAcc || "…",
-                        thinking: thinkingAcc || undefined,
-                      }
-                    : msg
-                )
-              );
+              scheduleFlush();
             }
           } catch {
             // Malformed JSON chunk — skip
           }
         }
       }
+      // Final flush after stream ends
+      if (rafId !== undefined) clearTimeout(rafId);
+      flush();
 
       // Final clean-up: if nothing came through, show error
       if (!replyAcc.trim()) {
@@ -262,23 +306,6 @@ export function ChatbotPanel() {
         );
       }
 
-      // If /diagrams was used, fetch an image from the scrapper
-      if (diagrams && replyAcc.trim()) {
-        const imgQuery = [stripped || raw, chapter, subject].filter(Boolean).join(" ") + " diagram illustration";
-        fetch(`/imglinks?query=${encodeURIComponent(imgQuery)}`)
-          .then((r) => r.json())
-          .then((data) => {
-            const imgs = data?.images;
-            if (imgs && imgs.length > 0) {
-              setMessages((m) =>
-                m.map((msg) =>
-                  msg.id === aiId ? { ...msg, image: imgs[0] } : msg
-                )
-              );
-            }
-          })
-          .catch(() => {});
-      }
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === "AbortError") {
         setMessages((m) =>
@@ -320,7 +347,7 @@ export function ChatbotPanel() {
     const body = JSON.stringify({
       sessionId,
       title,
-      messages: messages.map((m) => ({ role: m.role, text: m.text })),
+      messages: messages.map((m) => ({ role: m.role, text: m.text, images: m.images })),
     });
     if (token) {
       fetch(apiPath("/api/chat/sessions"), {
@@ -333,7 +360,11 @@ export function ChatbotPanel() {
     try {
       const raw = localStorage.getItem(NOTEBOOK_KEY);
       const notes: { id: string; title: string; content: string; createdAt: string; updatedAt: string }[] = raw ? JSON.parse(raw) : [];
-      const chatText = messages.map((m) => `${m.role === "user" ? "You" : "Nova"}: ${m.text}`).join("\n\n");
+      const chatText = messages.map((m) => {
+        const prefix = m.role === "user" ? "You" : "Nova";
+        const imgs = m.images?.length ? m.images.join("\n") + "\n" : "";
+        return `${prefix}: ${imgs}${m.text}`;
+      }).join("\n\n");
       notes.unshift({
         id: sessionId,
         title: "💬 " + title,
@@ -414,7 +445,22 @@ export function ChatbotPanel() {
             {pastSessions.length > 0 && (
               <button
                 type="button"
-                onClick={() => setShowPast(!showPast)}
+                onClick={() => {
+                  setShowPast(!showPast);
+                  if (!showPast) {
+                    const token = localStorage.getItem("token");
+                    if (token) {
+                      fetch(apiPath("/api/chat/sessions"), {
+                        headers: { Authorization: `Bearer ${token}` },
+                      })
+                        .then((r) => r.json())
+                        .then((d) => {
+                          if (d.sessions) setPastSessions(d.sessions);
+                        })
+                        .catch(() => {});
+                    }
+                  }
+                }}
                 className="h-8 w-8 rounded-xl clay-sm flex items-center justify-center hover:bg-muted transition-colors"
                 title="Past chats"
               >
@@ -480,10 +526,11 @@ export function ChatbotPanel() {
                             .then((d) => {
                               if (d.messages) {
                                 setMessages(
-                                  d.messages.map((m: { role: string; text: string }, i: number) => ({
+                                  d.messages.map((m: { role: string; text: string; images?: string[] }, i: number) => ({
                                     id: `${s.sessionId}-${i}`,
                                     role: m.role as "user" | "ai",
                                     text: m.text,
+                                    images: m.images,
                                   })),
                                 );
                                 setSessionId(s.sessionId);
@@ -689,14 +736,19 @@ function MessageBubble({ m, onImage, streaming }: { m: Message; onImage: (src: s
         {m.thinking && !m.isError && (
           <ThinkingBlock thinking={m.thinking} defaultOpen={streaming} />
         )}
-        {m.image && (
-          <button
-            type="button"
-            onClick={() => onImage(m.image!)}
-            className="block w-full clay-sm rounded-2xl overflow-hidden hover:-translate-y-0.5 transition-transform"
-          >
-            <img src={m.image} alt="AI illustration" className="w-full h-40 object-cover" />
-          </button>
+        {m.images && m.images.length > 0 && (
+          <div className="grid grid-cols-2 gap-2">
+            {m.images.map((src, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => onImage(src)}
+                className="block clay-sm rounded-2xl overflow-hidden hover:-translate-y-0.5 transition-transform"
+              >
+                <img src={src} alt={`AI illustration ${i + 1}`} className="w-full h-36 object-cover" />
+              </button>
+            ))}
+          </div>
         )}
         <div
           className={cn(

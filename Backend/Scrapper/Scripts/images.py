@@ -14,7 +14,7 @@ def ddgs_images(query: str):
                 url = res.get("image") or res.get("thumbnail") or res.get("url")
                 if url:
                     results_list.append(url)
-        return results_list[:5]
+        return results_list[:4]
     except Exception as e:
         logging.error(f"DDGS image search error for '{query}': {e}")
         return []
