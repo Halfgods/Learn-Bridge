@@ -1,5 +1,5 @@
 # 🌟 Nova Learn — AI-Powered Tutoring Platform
-
+https://github.com/user-attachments/assets/ac514b99-c60e-49f0-98d5-c42ec050e347
 > *An intelligent, adaptive learning companion that brings personalised education to every student.*
 
 Nova Learn is a full-stack AI tutoring platform that combines interactive quizzes, concept mapping, real-time AI chat, and teacher tools into one seamless experience. Students explore subjects at their own pace, while teachers can assign quizzes, track progress, and identify knowledge gaps.
@@ -70,8 +70,8 @@ The platform runs **four independent services** that work together:
 ### 1. Clone and enter the project
 
 ```bash
-git clone <repo-url> TISD-Final
-cd TISD-Final
+git clone [<repo-url> TISD-Final](https://github.com/Halfgods/Learn-Bridge.git)
+cd Learn-Bridge
 ```
 
 ### 2. Environment Variables
@@ -98,6 +98,8 @@ source .venv/bin/activate
 
 # Install Python dependencies
 pip install flask flask-cors pymongo PyJWT requests uvicorn ddgs yt-dlp google-genai fastapi
+
+
 
 # Or using uv (recommended, faster):
 uv sync
