@@ -20,6 +20,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from guard import validate_chat_input
+from rag_api import router as rag_router, rag_search, rag_get_chapter_context
 
 app = FastAPI()
 
@@ -30,6 +31,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(rag_router)
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
 logger = logging.getLogger(__name__)
@@ -88,7 +90,11 @@ it fits, mention one common mix-up if useful, and end with 1–3 quick check que
 Depth beats coverage; the explanation should be the longest part.
 """
 
-def build_system_prompt(subject: str | None = None, chapter: str | None = None) -> str:
+def build_system_prompt(
+    subject: str | None = None,
+    chapter: str | None = None,
+    rag_context: list[dict] | None = None,
+) -> str:
     """Build a system prompt pinned to a specific subject/chapter so the model never guesses."""
     prompt = BASE_SYSTEM_PROMPT.strip()
     if subject:
@@ -100,7 +106,31 @@ def build_system_prompt(subject: str | None = None, chapter: str | None = None) 
             "If the student asks about something unrelated, gently redirect them back."
         )
         prompt += ctx
+    if rag_context:
+        ncert_ctx = "\n\nHere are relevant excerpts from NCERT textbooks to help answer:\n"
+        for i, r in enumerate(rag_context, 1):
+            text = r["text"][:500].strip()
+            ncert_ctx += f"\n[{i}] From {r['source']} (relevance {r['relevance_score']}):\n{text}\n"
+        ncert_ctx += (
+            "\n\nIMPORTANT: When you use information from the sources above, "
+            "cite the source by placing [1], [2] etc. at the end of each paragraph. "
+            "Every paragraph must cite the NCERT source(s) it used."
+        )
+        prompt += ncert_ctx
     return prompt
+
+
+def build_citation_map(rag_context: list[dict]) -> dict[str, dict]:
+    """Build a citation ID -> source metadata map from RAG context."""
+    return {
+        str(i): {
+            "source": r["source"],
+            "relevance": r["relevance_score"],
+            "textbook": r.get("textbook", ""),
+            "chapter": r.get("chapter", ""),
+        }
+        for i, r in enumerate(rag_context, 1)
+    }
 
 
 def parse_subject_context(query: str) -> tuple[str, str | None, str | None]:
@@ -113,7 +143,7 @@ def parse_subject_context(query: str) -> tuple[str, str | None, str | None]:
     subject: str | None = None
     chapter: str | None = None
     q = query
-    m = re.match(r'^/subject:([^/\n]+?)(?:\s+/chapter:([^/\n]+?))?\s+', q, re.IGNORECASE)
+    m = re.match(r'^/subject:([^/\n]+)(?:\s+/chapter:([^/\n]+))?\s+', q, re.IGNORECASE)
     if m:
         subject = m.group(1).strip()
         chapter = (m.group(2) or "").strip() or None
@@ -232,7 +262,7 @@ def _gemini_generate_sync(session_id: str) -> tuple[str, str]:
         latest_user = f"{prev}\n\n{latest_user}" if latest_user else prev
 
     gem_model = _gemini_model_name()
-    cfg = types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT.strip())
+    cfg = types.GenerateContentConfig(system_instruction=build_system_prompt())
     last_err: Exception | None = None
 
     if not prior_contents:
@@ -319,10 +349,11 @@ def _ollama_http_timeout() -> httpx.Timeout:
 async def _ollama_chat_stream(
     model: str, messages: list[dict], think: bool = False,
     subject: str | None = None, chapter: str | None = None,
+    rag_context: list[dict] | None = None,
 ):
     """Yield raw parsed JSON chunks from Ollama /api/chat."""
     long_gen = bool(think) or model == _deep_model()
-    sys_prompt = build_system_prompt(subject, chapter)
+    sys_prompt = build_system_prompt(subject, chapter, rag_context)
     payload: dict = {
         "model": model,
         "messages": [{"role": "system", "content": sys_prompt}] + messages,
@@ -344,12 +375,13 @@ async def _ollama_chat_stream(
 async def _stream_deepseek(
     session_id: str, query: str, model: str,
     subject: str | None = None, chapter: str | None = None,
+    rag_context: list[dict] | None = None,
 ):
     """Stream deepseek-r1 with thinking tokens."""
     messages = _build_messages(session_id)
     full_response = []
 
-    async for chunk in _ollama_chat_stream(model, messages, think=True, subject=subject, chapter=chapter):
+    async for chunk in _ollama_chat_stream(model, messages, think=True, subject=subject, chapter=chapter, rag_context=rag_context):
         msg = chunk.get("message", {})
         thinking_text = msg.get("thinking", "")
         response_text = msg.get("content",  "")
@@ -381,12 +413,13 @@ class _OllamaEmptyError(RuntimeError):
 async def _stream_standard_raw(
     session_id: str, query: str, model: str,
     subject: str | None = None, chapter: str | None = None,
+    rag_context: list[dict] | None = None,
 ):
     """Stream a standard model; raises _OllamaEmptyError when zero tokens arrive."""
     messages = _build_messages(session_id)
     full_response = []
 
-    async for chunk in _ollama_chat_stream(model, messages, subject=subject, chapter=chapter):
+    async for chunk in _ollama_chat_stream(model, messages, subject=subject, chapter=chapter, rag_context=rag_context):
         token = chunk.get("message", {}).get("content", "")
         if token:
             full_response.append(token)
@@ -406,6 +439,7 @@ async def _stream_gemini_fallback(
     session_id: str,
     subject: str | None = None,
     chapter: str | None = None,
+    rag_context: list[dict] | None = None,
 ):
     """
     Gemini fallback streamed as NDJSON.
@@ -451,6 +485,7 @@ async def _stream_gemini_fallback(
 async def _stream_with_fallback(
     session_id: str, query: str, model: str,
     subject: str | None = None, chapter: str | None = None,
+    rag_context: list[dict] | None = None,
 ):
     """
     Try primary Ollama model → secondary Ollama model → Gemini cloud.
@@ -458,7 +493,7 @@ async def _stream_with_fallback(
     """
     produced_tokens = False
     try:
-        async for chunk in _stream_standard_raw(session_id, query, model, subject=subject, chapter=chapter):
+        async for chunk in _stream_standard_raw(session_id, query, model, subject=subject, chapter=chapter, rag_context=rag_context):
             produced_tokens = True
             yield chunk
         if produced_tokens:
@@ -467,13 +502,12 @@ async def _stream_with_fallback(
         raise _OllamaEmptyError(f"Model {model!r} produced no tokens")
 
     except _OllamaEmptyError as empty_exc:
-        # No output from primary; try the secondary Ollama model first
         fallback = _get_fallback(model)
         if fallback:
             logger.warning("%s — trying secondary Ollama model %s", empty_exc, fallback)
             secondary_tokens = False
             try:
-                async for chunk in _stream_standard_raw(session_id, query, fallback, subject=subject, chapter=chapter):
+                async for chunk in _stream_standard_raw(session_id, query, fallback, subject=subject, chapter=chapter, rag_context=rag_context):
                     secondary_tokens = True
                     yield chunk
                 if secondary_tokens:
@@ -481,15 +515,14 @@ async def _stream_with_fallback(
             except Exception as fb_exc:
                 logger.warning("Secondary Ollama %s also failed: %s", fallback, fb_exc)
 
-        # Both Ollama paths dead → Gemini
-        async for chunk in _stream_gemini_fallback(session_id, subject=subject, chapter=chapter):
+        async for chunk in _stream_gemini_fallback(session_id, subject=subject, chapter=chapter, rag_context=rag_context):
             yield chunk
 
     except Exception as exc:
         fallback = _get_fallback(model)
         if fallback is None:
             logger.error("Model %s failed, no Ollama fallback: %s — trying Gemini", model, exc)
-            async for chunk in _stream_gemini_fallback(session_id, subject=subject, chapter=chapter):
+            async for chunk in _stream_gemini_fallback(session_id, subject=subject, chapter=chapter, rag_context=rag_context):
                 yield chunk
             return
 
@@ -502,14 +535,14 @@ async def _stream_with_fallback(
 
         secondary_tokens = False
         try:
-            async for chunk in _stream_standard_raw(session_id, query, fallback, subject=subject, chapter=chapter):
+            async for chunk in _stream_standard_raw(session_id, query, fallback, subject=subject, chapter=chapter, rag_context=rag_context):
                 secondary_tokens = True
                 yield chunk
         except Exception as fb_exc:
             logger.error("Fallback Ollama %s also failed: %s — trying Gemini", fallback, fb_exc)
 
         if not secondary_tokens:
-            async for chunk in _stream_gemini_fallback(session_id, subject=subject, chapter=chapter):
+            async for chunk in _stream_gemini_fallback(session_id, subject=subject, chapter=chapter, rag_context=rag_context):
                 yield chunk
 
 
@@ -517,22 +550,21 @@ async def _stream_with_fallback(
 # Sync: aggregate Ollama stream + optional Gemini fallback
 # ---------------------------------------------------------------------------
 
-async def _collect_standard_text(session_id: str, model: str) -> str:
+async def _collect_standard_text(session_id: str, model: str, rag_context: list[dict] | None = None) -> str:
     messages = _build_messages(session_id)
     parts: list[str] = []
-    async for chunk in _ollama_chat_stream(model, messages, think=False):
+    async for chunk in _ollama_chat_stream(model, messages, think=False, rag_context=rag_context):
         token = chunk.get("message", {}).get("content", "") or ""
         if token:
             parts.append(token)
     return "".join(parts)
 
 
-async def _collect_deepseek_thinking_and_answer(session_id: str, model: str) -> tuple[str, str]:
-    """Collect reasoning trace and final answer from DeepSeek (Ollama `think: true`)."""
+async def _collect_deepseek_thinking_and_answer(session_id: str, model: str, rag_context: list[dict] | None = None) -> tuple[str, str]:
     messages = _build_messages(session_id)
     thinking_parts: list[str] = []
     answer_parts: list[str] = []
-    async for chunk in _ollama_chat_stream(model, messages, think=True):
+    async for chunk in _ollama_chat_stream(model, messages, think=True, rag_context=rag_context):
         msg = chunk.get("message", {})
         t = msg.get("thinking", "") or ""
         c = msg.get("content", "") or ""
@@ -545,20 +577,20 @@ async def _collect_deepseek_thinking_and_answer(session_id: str, model: str) -> 
 
 async def _ollama_sync_collect(
     session_id: str, model: str, deep_research: bool,
+    rag_context: list[dict] | None = None,
 ) -> tuple[str, str, str | None]:
-    """Returns (reply_text, provider_label, optional_thinking_for_deep_models)."""
     if deep_research or model == _deep_model():
-        thinking, text = await _collect_deepseek_thinking_and_answer(session_id, model)
+        thinking, text = await _collect_deepseek_thinking_and_answer(session_id, model, rag_context=rag_context)
         think_out = thinking.strip() or None
         return text, f"ollama:{model}", think_out
     try:
-        text = await _collect_standard_text(session_id, model)
+        text = await _collect_standard_text(session_id, model, rag_context=rag_context)
         return text, f"ollama:{model}", None
     except Exception:
         fallback = _get_fallback(model)
         if fallback is None:
             raise
-        text = await _collect_standard_text(session_id, fallback)
+        text = await _collect_standard_text(session_id, fallback, rag_context=rag_context)
         return text, f"ollama:{fallback}", None
 
 
@@ -570,6 +602,7 @@ class ChatSyncBody(BaseModel):
     query: str
     session_id: str = "default"
     deep_research: bool = False
+    use_rag: bool = False
 
 
 class ClearHistoryBody(BaseModel):
@@ -585,33 +618,52 @@ async def chat(
     query:         str  = Query(...,   description="Student's question"),
     session_id:    str  = Query("default", description="Session identifier"),
     deep_research: bool = Query(False, description="Use DeepSeek for deep reasoning"),
+    use_rag:       bool = Query(False, description="Inject NCERT textbook context"),
 ):
     ok, reason = validate_chat_input(query)
     if not ok:
         raise HTTPException(status_code=400, detail=reason)
 
-    # Parse optional /subject: /chapter: context prefix from the query
     cleaned_query, subject, chapter = parse_subject_context(query)
     if not cleaned_query:
-        cleaned_query = query  # safety: never send empty query
+        cleaned_query = query
 
-    # Push the cleaned user message to history
-    _push(session_id, "user", cleaned_query)
+    async def _rag_stream():
+        rag_context = None
+        if use_rag:
+            yield json.dumps({"notice": "📖 Looking up NCERT textbooks..."}) + "\n"
+            try:
+                if subject and chapter:
+                    rag_context = rag_get_chapter_context(chapter, subject=subject)
+                    if rag_context:
+                        n = rag_context[0]["total_chunks"]
+                        yield json.dumps({"notice": f"📖 Loaded Chapter: {chapter} ({n} sections)"}) + "\n"
+                        logger.info("RAG chapter context: %s / %s (%d chunks)", subject, chapter, n)
+                if not rag_context:
+                    rag_context = rag_search(cleaned_query, top_k=3)
+                    if rag_context:
+                        yield json.dumps({"notice": f"📖 Found {len(rag_context)} relevant NCERT passages"}) + "\n"
+                        logger.info("RAG semantic context: %d passages", len(rag_context))
+                if rag_context:
+                    citation_map = build_citation_map(rag_context)
+                    yield json.dumps({"type": "citations", "citations": citation_map}) + "\n"
+            except Exception as e:
+                logger.warning("RAG search failed: %s", e)
 
-    model = _select_model(cleaned_query, deep_research)
-    logger.info("Chat | subject=%s chapter=%s model=%s", subject, chapter, model)
+        _push(session_id, "user", cleaned_query)
+        model = _select_model(cleaned_query, deep_research)
+        logger.info("Chat | subject=%s chapter=%s model=%s rag=%s", subject, chapter, model, bool(rag_context))
 
-    async def _stream_with_spelling():
         if reason:
             yield json.dumps({"notice": reason}) + "\n"
         if model == _deep_model():
-            async for chunk in _stream_deepseek(session_id, cleaned_query, model, subject=subject, chapter=chapter):
+            async for chunk in _stream_deepseek(session_id, cleaned_query, model, subject=subject, chapter=chapter, rag_context=rag_context):
                 yield chunk
         else:
-            async for chunk in _stream_with_fallback(session_id, cleaned_query, model, subject=subject, chapter=chapter):
+            async for chunk in _stream_with_fallback(session_id, cleaned_query, model, subject=subject, chapter=chapter, rag_context=rag_context):
                 yield chunk
 
-    return StreamingResponse(_stream_with_spelling(), media_type="application/x-ndjson")
+    return StreamingResponse(_rag_stream(), media_type="application/x-ndjson")
 
 
 @app.post("/chat/sync")
@@ -621,12 +673,23 @@ async def chat_sync(body: ChatSyncBody):
         raise HTTPException(status_code=400, detail=reason)
 
     sid = (body.session_id or "default").strip() or "default"
+
+    rag_context = None
+    citation_map = None
+    if body.use_rag:
+        try:
+            rag_context = rag_search(body.query, top_k=3)
+            if rag_context:
+                citation_map = build_citation_map(rag_context)
+        except Exception as e:
+            logger.warning("RAG search failed: %s", e)
+
     _push(sid, "user", body.query)
     model = _select_model(body.query, body.deep_research)
 
     thinking_out: str | None = None
     try:
-        text, provider, thinking_out = await _ollama_sync_collect(sid, model, body.deep_research)
+        text, provider, thinking_out = await _ollama_sync_collect(sid, model, body.deep_research, rag_context=rag_context)
         if not text.strip():
             raise RuntimeError("Ollama returned an empty reply")
     except Exception as ollama_exc:
@@ -647,6 +710,8 @@ async def chat_sync(body: ChatSyncBody):
 
     _push(sid, "assistant", text)
     out: dict = {"reply": text, "provider": provider}
+    if citation_map:
+        out["citations"] = citation_map
     if thinking_out:
         out["thinking"] = thinking_out
     return out

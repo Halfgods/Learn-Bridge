@@ -1,21 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Calculator, Beaker, BookOpen, Globe2, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { apiPath, parseApiJson } from "@/lib/api";
 import { useMe } from "@/hooks/useMe";
+import { getSubjectMeta } from "@/lib/subject-meta";
 
 export const Route = createFileRoute("/app/subjects")({
   head: () => ({ meta: [{ title: "Subjects — Nova Learn" }] }),
   component: SubjectsPage,
 });
-
-const meta: Record<string, { icon: typeof BookOpen; gradient: string; text: string }> = {
-  Mathematics: { icon: Calculator, gradient: "gradient-primary", text: "text-white" },
-  Science: { icon: Beaker, gradient: "gradient-cyan", text: "text-white" },
-  English: { icon: BookOpen, gradient: "gradient-yellow", text: "text-amber-900" },
-  "Social Science": { icon: Globe2, gradient: "gradient-peach", text: "text-orange-900" },
-};
 
 function SubjectsPage() {
   const { data: user } = useMe();
@@ -32,10 +26,7 @@ function SubjectsPage() {
     staleTime: Infinity,
   });
 
-  const list =
-    names && names.length
-      ? names
-      : ["Mathematics", "Science", "English", "Social Science"];
+  const list = names ?? [];
 
   return (
     <div className="p-6 lg:p-10 max-w-6xl mx-auto space-y-6">
@@ -49,7 +40,7 @@ function SubjectsPage() {
       </header>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {list.map((name) => {
-          const m = meta[name] || { icon: BookOpen, gradient: "gradient-primary", text: "text-white" };
+          const m = getSubjectMeta(name);
           const id = name.toLowerCase().replace(/\s+/g, "-");
           return (
             <Link

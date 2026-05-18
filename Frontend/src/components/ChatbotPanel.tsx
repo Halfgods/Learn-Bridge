@@ -47,7 +47,11 @@ function useSubjectContext(): { subject: string | null; chapter: string | null }
     const slug = subjectMatch[1];
     const subject = decodeURIComponent(slug)
       .split("-")
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .map((w, i) => {
+        const capped = w.charAt(0).toUpperCase() + w.slice(1);
+        if (i === 0) return capped;
+        return capped.replace(/\b(And|Of|The|In|To|A|An|For|Or|At|By|With|Its)\b/g, (m) => m.toLowerCase());
+      })
       .join(" ");
     return { subject, chapter: null };
   }
@@ -64,12 +68,13 @@ type Message = {
   images?: string[];
   confidence?: number;
   sources?: string[];
+  citationMap?: Record<string, { source: string; textbook?: string; chapter?: string }>;
   followups?: string[];
   isError?: boolean;
 };
 
-function renderTutorMarkdown(text: string) {
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+function renderTutorMarkdown(text: string, citationMap?: Record<string, { source: string; textbook?: string; chapter?: string }>) {
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[\d+\])/g);
   return parts.map((p, i) => {
     const bold = p.match(/^\*\*([^*]+)\*\*$/);
     if (bold) return <strong key={i}>{bold[1]}</strong>;
@@ -80,6 +85,20 @@ function renderTutorMarkdown(text: string) {
           {code[1]}
         </code>
       );
+    const cite = p.match(/^\[(\d+)\]$/);
+    if (cite && citationMap?.[cite[1]]) {
+      const src = citationMap[cite[1]];
+      return (
+        <sup key={i} className="relative group">
+          <span className="inline-flex items-center justify-center h-4 min-w-[16px] px-[3px] rounded-sm bg-primary/15 text-primary text-[10px] font-bold cursor-help hover:bg-primary/25 transition-colors">
+            {cite[1]}
+          </span>
+          <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 rounded-lg bg-popover text-popover-foreground text-[10px] font-medium shadow-lg border border-border whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+            {src.source}
+          </span>
+        </sup>
+      );
+    }
     return <span key={i}>{p}</span>;
   });
 }
@@ -199,13 +218,16 @@ export function ChatbotPanel() {
 
     let thinkingAcc = "";
     let replyAcc = "";
+    let citationMap: Record<string, { source: string; textbook?: string; chapter?: string }> | null = null;
 
     try {
+      const useRag = Boolean(subject);
       const url =
         `${tutorPath("/chat")}` +
         `?query=${encodeURIComponent(queryForApi)}` +
         `&session_id=${encodeURIComponent(sessionId)}` +
-        `&deep_research=${deep}`;
+        `&deep_research=${deep}` +
+        `&use_rag=${useRag}`;
 
       const res = await fetch(url, { method: "POST", signal: controller.signal });
 
@@ -263,6 +285,8 @@ export function ChatbotPanel() {
               thinking?: boolean;
               error?: string;
               notice?: string;
+              type?: string;
+              citations?: Record<string, { source: string; textbook?: string; chapter?: string }>;
             };
 
             if (chunk.error) {
@@ -272,6 +296,11 @@ export function ChatbotPanel() {
                 )
               );
               break;
+            }
+
+            if (chunk.type === "citations" && chunk.citations) {
+              citationMap = chunk.citations;
+              continue;
             }
 
             if (chunk.notice && !replyAcc && !thinkingAcc && !quiz) {
@@ -292,9 +321,19 @@ export function ChatbotPanel() {
           }
         }
       }
-      // Final flush after stream ends
+      // Final flush after stream ends — attach citations if present
       if (rafId !== undefined) clearTimeout(rafId);
-      flush();
+      if (citationMap) {
+        setMessages((m) =>
+          m.map((msg) =>
+            msg.id === aiId
+              ? { ...msg, text: replyAcc || "…", thinking: thinkingAcc || undefined, citationMap }
+              : msg
+          )
+        );
+      } else {
+        flush();
+      }
 
       // Final clean-up: if nothing came through, show error
       if (!replyAcc.trim()) {
@@ -759,7 +798,7 @@ function MessageBubble({ m, onImage, streaming }: { m: Message; onImage: (src: s
               : "bg-muted",
           )}
         >
-          {renderTutorMarkdown(m.text)}
+          {renderTutorMarkdown(m.text, m.citationMap)}
         </div>
         {(m.confidence || m.sources) && (
           <div className="flex items-center gap-2 px-1 text-xs">
