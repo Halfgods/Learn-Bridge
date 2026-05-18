@@ -299,3 +299,41 @@ def rag_search(query: str, top_k: int = 3) -> list[dict]:
             "relevance_score": round(float(score), 4),
         })
     return results
+
+def rag_get_chapter_context(chapter: str, std: str | None = None, subject: str | None = None) -> list[dict] | None:
+    """Return all chunks for a chapter, matched by name + optional std/subject filters."""
+    _ensure_loaded()
+    pattern = re.escape(chapter.strip().lower())
+    matched = []
+    for m in _chunks_meta:
+        ch_lower = m["ch"].strip().lower()
+        if not re.search(pattern, ch_lower):
+            continue
+        if std and m["std"] != std:
+            continue
+        if subject and m["subj"].lower() != subject.lower():
+            continue
+        matched.append(m)
+    if not matched:
+        return None
+    chunks_text = []
+    for m in matched:
+        text = m["text"].strip()
+        if text:
+            chunks_text.append({
+                "text": text,
+                "pages": m.get("pages", []),
+                "image_count": len(m.get("images", [])),
+            })
+    if not chunks_text:
+        return None
+    return [{
+        "text": "\n\n".join(c["text"] for c in chunks_text),
+        "source": f"NCERT Class {matched[0]['std']} {matched[0]['subj']} — Chapter {matched[0]['ch_num']}: {matched[0]['ch']}",
+        "relevance_score": 1.0,
+        "total_chunks": len(chunks_text),
+        "image_count": sum(c["image_count"] for c in chunks_text),
+        "image_urls": _build_image_urls(
+            [img for m in matched for img in m.get("images", [])]
+        ),
+    }]

@@ -20,7 +20,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from guard import validate_chat_input
-from rag_api import router as rag_router, rag_search
+from rag_api import router as rag_router, rag_search, rag_get_chapter_context
 
 app = FastAPI()
 
@@ -613,9 +613,14 @@ async def chat(
     rag_context = None
     if use_rag:
         try:
-            rag_context = rag_search(cleaned_query, top_k=3)
-            if rag_context:
-                logger.info("RAG context injected: %d passages", len(rag_context))
+            if subject and chapter:
+                rag_context = rag_get_chapter_context(chapter, subject=subject)
+                if rag_context:
+                    logger.info("RAG chapter context: %s / %s (%d chunks)", subject, chapter, rag_context[0]["total_chunks"])
+            if not rag_context:
+                rag_context = rag_search(cleaned_query, top_k=3)
+                if rag_context:
+                    logger.info("RAG semantic context: %d passages", len(rag_context))
         except Exception as e:
             logger.warning("RAG search failed: %s", e)
 
