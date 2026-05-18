@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 OLLAMA_URL = (os.environ.get("OLLAMA_CHAT_URL") or "http://localhost:11434/api/chat").strip()
+RAG_URL = (os.environ.get("RAG_URL") or "http://localhost:8080/v1/rag/query").strip()
 
 
 def _env_str(name: str, default: str) -> str:
@@ -101,6 +102,69 @@ def build_system_prompt(subject: str | None = None, chapter: str | None = None) 
         )
         prompt += ctx
     return prompt
+
+
+def build_rag_system_prompt(rag_context: str, subject: str | None = None, chapter: str | None = None) -> str:
+    """Build a system prompt that includes NCERT RAG excerpts."""
+    base = BASE_SYSTEM_PROMPT.strip()
+    context_block = (
+        "\n\nYou are given NCERT textbook excerpts below to help answer the student's question. "
+        "Base your answer on these excerpts. "
+        "Do NOT make up citations.\n\n"
+        "=== NCERT TEXTBOOK EXCERPTS ===\n"
+        f"{rag_context}\n"
+        "=== END OF EXCERPTS ===\n"
+    )
+    prompt = base + context_block
+    if subject:
+        ctx = f"\n\nCURRENT SUBJECT: {subject}"
+        if chapter:
+            ctx += f"\nCURRENT CHAPTER: {chapter}"
+        prompt += ctx
+    return prompt
+
+
+async def _query_rag(query: str, top_k: int = 3) -> tuple[list[dict], str | None]:
+    """Query the NCERT RAG endpoint. Returns (raw_results, formatted_context_string) or ([], None)."""
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0)) as client:
+            resp = await client.post(RAG_URL, json={"query": query, "top_k": top_k})
+            if resp.status_code != 200:
+                return [], None
+            data = resp.json()
+            results = data.get("results", [])
+            if not results:
+                return [], None
+            parts = []
+            for i, r in enumerate(results, 1):
+                text = r.get("formatted_text") or r.get("text", "")
+                parts.append(f"--- Excerpt {i} ---\n{text}\n")
+            context = "\n".join(parts)
+            return results, context
+    except Exception as e:
+        logger.warning("RAG query failed: %s", e)
+        return [], None
+
+
+def format_citations(rag_results: list[dict]) -> str:
+    """Format RAG results as References section."""
+    seen = set()
+    lines = []
+    for r in rag_results:
+        src = r.get("source", {})
+        chapter = src.get("chapter", "")
+        pages = src.get("textbook_pages", [])
+        key = (chapter, tuple(pages))
+        if key in seen:
+            continue
+        seen.add(key)
+        pg_str = ", ".join(str(p) for p in pages) if pages else ""
+        if chapter:
+            line = f"Chapter {chapter} pg {pg_str}" if pg_str else f"Chapter {chapter}"
+            lines.append(line)
+    if lines:
+        return "\nReferences:\n" + "\n".join(lines)
+    return ""
 
 
 def parse_subject_context(query: str) -> tuple[str, str | None, str | None]:
@@ -207,7 +271,12 @@ def _sessions_to_genai_contents(msgs: list[dict]) -> list[types.Content]:
     return rows
 
 
-def _gemini_generate_sync(session_id: str) -> tuple[str, str]:
+def _gemini_generate_sync(
+    session_id: str,
+    subject: str | None = None,
+    chapter: str | None = None,
+    rag_context: str | None = None,
+) -> tuple[str, str]:
     """Blocking Gemini completion via google-genai streaming; run under asyncio.to_thread."""
     keys = _gemini_key_list()
     if not keys:
@@ -232,7 +301,11 @@ def _gemini_generate_sync(session_id: str) -> tuple[str, str]:
         latest_user = f"{prev}\n\n{latest_user}" if latest_user else prev
 
     gem_model = _gemini_model_name()
-    cfg = types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT.strip())
+    if rag_context:
+        system_instruction = build_rag_system_prompt(rag_context, subject, chapter)
+    else:
+        system_instruction = build_system_prompt(subject, chapter)
+    cfg = types.GenerateContentConfig(system_instruction=system_instruction)
     last_err: Exception | None = None
 
     if not prior_contents:
@@ -319,10 +392,14 @@ def _ollama_http_timeout() -> httpx.Timeout:
 async def _ollama_chat_stream(
     model: str, messages: list[dict], think: bool = False,
     subject: str | None = None, chapter: str | None = None,
+    rag_context: str | None = None,
 ):
     """Yield raw parsed JSON chunks from Ollama /api/chat."""
     long_gen = bool(think) or model == _deep_model()
-    sys_prompt = build_system_prompt(subject, chapter)
+    if rag_context:
+        sys_prompt = build_rag_system_prompt(rag_context, subject, chapter)
+    else:
+        sys_prompt = build_system_prompt(subject, chapter)
     payload: dict = {
         "model": model,
         "messages": [{"role": "system", "content": sys_prompt}] + messages,
@@ -344,12 +421,13 @@ async def _ollama_chat_stream(
 async def _stream_deepseek(
     session_id: str, query: str, model: str,
     subject: str | None = None, chapter: str | None = None,
+    rag_context: str | None = None,
 ):
     """Stream deepseek-r1 with thinking tokens."""
     messages = _build_messages(session_id)
     full_response = []
 
-    async for chunk in _ollama_chat_stream(model, messages, think=True, subject=subject, chapter=chapter):
+    async for chunk in _ollama_chat_stream(model, messages, think=True, subject=subject, chapter=chapter, rag_context=rag_context):
         msg = chunk.get("message", {})
         thinking_text = msg.get("thinking", "")
         response_text = msg.get("content",  "")
@@ -381,12 +459,13 @@ class _OllamaEmptyError(RuntimeError):
 async def _stream_standard_raw(
     session_id: str, query: str, model: str,
     subject: str | None = None, chapter: str | None = None,
+    rag_context: str | None = None,
 ):
     """Stream a standard model; raises _OllamaEmptyError when zero tokens arrive."""
     messages = _build_messages(session_id)
     full_response = []
 
-    async for chunk in _ollama_chat_stream(model, messages, subject=subject, chapter=chapter):
+    async for chunk in _ollama_chat_stream(model, messages, subject=subject, chapter=chapter, rag_context=rag_context):
         token = chunk.get("message", {}).get("content", "")
         if token:
             full_response.append(token)
@@ -406,6 +485,7 @@ async def _stream_gemini_fallback(
     session_id: str,
     subject: str | None = None,
     chapter: str | None = None,
+    rag_context: str | None = None,
 ):
     """
     Gemini fallback streamed as NDJSON.
@@ -413,15 +493,10 @@ async def _stream_gemini_fallback(
     Builds a context-aware system prompt and emits chunks one-by-one.
     """
     logger.warning("Ollama produced no tokens — falling back to Gemini")
-    yield json.dumps({
-        "session_id": session_id,
-        "model_name": "gemini",
-        "notice": "Ollama unavailable — using Gemini cloud fallback.",
-    }) + "\n"
 
     try:
         # _gemini_generate_sync is blocking; run it in a thread
-        text, provider = await asyncio.to_thread(_gemini_generate_sync, session_id)
+        text, provider = await asyncio.to_thread(_gemini_generate_sync, session_id, subject, chapter, rag_context)
         if not text.strip():
             raise RuntimeError("Gemini returned empty reply")
 
@@ -451,6 +526,7 @@ async def _stream_gemini_fallback(
 async def _stream_with_fallback(
     session_id: str, query: str, model: str,
     subject: str | None = None, chapter: str | None = None,
+    rag_context: str | None = None,
 ):
     """
     Try primary Ollama model → secondary Ollama model → Gemini cloud.
@@ -458,7 +534,7 @@ async def _stream_with_fallback(
     """
     produced_tokens = False
     try:
-        async for chunk in _stream_standard_raw(session_id, query, model, subject=subject, chapter=chapter):
+        async for chunk in _stream_standard_raw(session_id, query, model, subject=subject, chapter=chapter, rag_context=rag_context):
             produced_tokens = True
             yield chunk
         if produced_tokens:
@@ -473,7 +549,7 @@ async def _stream_with_fallback(
             logger.warning("%s — trying secondary Ollama model %s", empty_exc, fallback)
             secondary_tokens = False
             try:
-                async for chunk in _stream_standard_raw(session_id, query, fallback, subject=subject, chapter=chapter):
+                async for chunk in _stream_standard_raw(session_id, query, fallback, subject=subject, chapter=chapter, rag_context=rag_context):
                     secondary_tokens = True
                     yield chunk
                 if secondary_tokens:
@@ -482,34 +558,29 @@ async def _stream_with_fallback(
                 logger.warning("Secondary Ollama %s also failed: %s", fallback, fb_exc)
 
         # Both Ollama paths dead → Gemini
-        async for chunk in _stream_gemini_fallback(session_id, subject=subject, chapter=chapter):
+        async for chunk in _stream_gemini_fallback(session_id, subject=subject, chapter=chapter, rag_context=rag_context):
             yield chunk
 
     except Exception as exc:
         fallback = _get_fallback(model)
         if fallback is None:
             logger.error("Model %s failed, no Ollama fallback: %s — trying Gemini", model, exc)
-            async for chunk in _stream_gemini_fallback(session_id, subject=subject, chapter=chapter):
+            async for chunk in _stream_gemini_fallback(session_id, subject=subject, chapter=chapter, rag_context=rag_context):
                 yield chunk
             return
 
         logger.warning("Model %s failed (%s) → switching to %s", model, exc, fallback)
-        yield json.dumps({
-            "session_id": session_id,
-            "model_name": fallback,
-            "notice": f"Primary model '{model}' unavailable. Switched to '{fallback}'.",
-        }) + "\n"
 
         secondary_tokens = False
         try:
-            async for chunk in _stream_standard_raw(session_id, query, fallback, subject=subject, chapter=chapter):
+            async for chunk in _stream_standard_raw(session_id, query, fallback, subject=subject, chapter=chapter, rag_context=rag_context):
                 secondary_tokens = True
                 yield chunk
         except Exception as fb_exc:
             logger.error("Fallback Ollama %s also failed: %s — trying Gemini", fallback, fb_exc)
 
         if not secondary_tokens:
-            async for chunk in _stream_gemini_fallback(session_id, subject=subject, chapter=chapter):
+            async for chunk in _stream_gemini_fallback(session_id, subject=subject, chapter=chapter, rag_context=rag_context):
                 yield chunk
 
 
@@ -517,22 +588,22 @@ async def _stream_with_fallback(
 # Sync: aggregate Ollama stream + optional Gemini fallback
 # ---------------------------------------------------------------------------
 
-async def _collect_standard_text(session_id: str, model: str) -> str:
+async def _collect_standard_text(session_id: str, model: str, rag_context: str | None = None) -> str:
     messages = _build_messages(session_id)
     parts: list[str] = []
-    async for chunk in _ollama_chat_stream(model, messages, think=False):
+    async for chunk in _ollama_chat_stream(model, messages, think=False, rag_context=rag_context):
         token = chunk.get("message", {}).get("content", "") or ""
         if token:
             parts.append(token)
     return "".join(parts)
 
 
-async def _collect_deepseek_thinking_and_answer(session_id: str, model: str) -> tuple[str, str]:
+async def _collect_deepseek_thinking_and_answer(session_id: str, model: str, rag_context: str | None = None) -> tuple[str, str]:
     """Collect reasoning trace and final answer from DeepSeek (Ollama `think: true`)."""
     messages = _build_messages(session_id)
     thinking_parts: list[str] = []
     answer_parts: list[str] = []
-    async for chunk in _ollama_chat_stream(model, messages, think=True):
+    async for chunk in _ollama_chat_stream(model, messages, think=True, rag_context=rag_context):
         msg = chunk.get("message", {})
         t = msg.get("thinking", "") or ""
         c = msg.get("content", "") or ""
@@ -545,25 +616,31 @@ async def _collect_deepseek_thinking_and_answer(session_id: str, model: str) -> 
 
 async def _ollama_sync_collect(
     session_id: str, model: str, deep_research: bool,
+    rag_context: str | None = None,
 ) -> tuple[str, str, str | None]:
     """Returns (reply_text, provider_label, optional_thinking_for_deep_models)."""
     if deep_research or model == _deep_model():
-        thinking, text = await _collect_deepseek_thinking_and_answer(session_id, model)
+        thinking, text = await _collect_deepseek_thinking_and_answer(session_id, model, rag_context)
         think_out = thinking.strip() or None
         return text, f"ollama:{model}", think_out
     try:
-        text = await _collect_standard_text(session_id, model)
+        text = await _collect_standard_text(session_id, model, rag_context)
         return text, f"ollama:{model}", None
     except Exception:
         fallback = _get_fallback(model)
         if fallback is None:
             raise
-        text = await _collect_standard_text(session_id, fallback)
+        text = await _collect_standard_text(session_id, fallback, rag_context)
         return text, f"ollama:{fallback}", None
 
 
-async def _gemini_generate_from_session(session_id: str) -> tuple[str, str]:
-    return await asyncio.to_thread(_gemini_generate_sync, session_id)
+async def _gemini_generate_from_session(
+    session_id: str,
+    subject: str | None = None,
+    chapter: str | None = None,
+    rag_context: str | None = None,
+) -> tuple[str, str]:
+    return await asyncio.to_thread(_gemini_generate_sync, session_id, subject, chapter, rag_context)
 
 
 class ChatSyncBody(BaseModel):
@@ -595,23 +672,31 @@ async def chat(
     if not cleaned_query:
         cleaned_query = query  # safety: never send empty query
 
+    # Query RAG for NCERT context
+    rag_results, rag_context = await _query_rag(cleaned_query)
+    if rag_context:
+        logger.info("RAG found %d results for query", len(rag_results))
+
     # Push the cleaned user message to history
     _push(session_id, "user", cleaned_query)
 
     model = _select_model(cleaned_query, deep_research)
     logger.info("Chat | subject=%s chapter=%s model=%s", subject, chapter, model)
 
-    async def _stream_with_spelling():
-        if reason:
-            yield json.dumps({"notice": reason}) + "\n"
+    async def _stream_response():
         if model == _deep_model():
-            async for chunk in _stream_deepseek(session_id, cleaned_query, model, subject=subject, chapter=chapter):
+            async for chunk in _stream_deepseek(session_id, cleaned_query, model, subject=subject, chapter=chapter, rag_context=rag_context):
                 yield chunk
         else:
-            async for chunk in _stream_with_fallback(session_id, cleaned_query, model, subject=subject, chapter=chapter):
+            async for chunk in _stream_with_fallback(session_id, cleaned_query, model, subject=subject, chapter=chapter, rag_context=rag_context):
                 yield chunk
+        if rag_results:
+            citations_text = format_citations(rag_results)
+            if citations_text:
+                for line in citations_text.split("\n"):
+                    yield json.dumps({"session_id": session_id, "model_name": model, "response": line + "\n"}) + "\n"
 
-    return StreamingResponse(_stream_with_spelling(), media_type="application/x-ndjson")
+    return StreamingResponse(_stream_response(), media_type="application/x-ndjson")
 
 
 @app.post("/chat/sync")
@@ -621,18 +706,27 @@ async def chat_sync(body: ChatSyncBody):
         raise HTTPException(status_code=400, detail=reason)
 
     sid = (body.session_id or "default").strip() or "default"
-    _push(sid, "user", body.query)
-    model = _select_model(body.query, body.deep_research)
+
+    # Parse subject/chapter and query RAG for NCERT context
+    cleaned_query, subject, chapter = parse_subject_context(body.query)
+    if not cleaned_query:
+        cleaned_query = body.query
+    rag_results, rag_context = await _query_rag(cleaned_query)
+    if rag_context:
+        logger.info("RAG found %d results for sync query", len(rag_results))
+
+    _push(sid, "user", cleaned_query)
+    model = _select_model(cleaned_query, body.deep_research)
 
     thinking_out: str | None = None
     try:
-        text, provider, thinking_out = await _ollama_sync_collect(sid, model, body.deep_research)
+        text, provider, thinking_out = await _ollama_sync_collect(sid, model, body.deep_research, rag_context=rag_context)
         if not text.strip():
             raise RuntimeError("Ollama returned an empty reply")
     except Exception as ollama_exc:
         logger.warning("Ollama sync failed, trying Gemini: %s", ollama_exc)
         try:
-            text, provider = await _gemini_generate_from_session(sid)
+            text, provider = await _gemini_generate_from_session(sid, subject=subject, chapter=chapter, rag_context=rag_context)
             thinking_out = None
         except Exception as gem_exc:
             logger.error(
@@ -644,6 +738,11 @@ async def chat_sync(body: ChatSyncBody):
                 status_code=502,
                 detail="Tutor could not produce a reply. Start Ollama, or set GEMINI_API_KEYS and GEMINI_MODEL for cloud fallback.",
             ) from gem_exc
+
+    if rag_results:
+        citations_text = format_citations(rag_results)
+        if citations_text:
+            text += "\n\n" + citations_text
 
     _push(sid, "assistant", text)
     out: dict = {"reply": text, "provider": provider}

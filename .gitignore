@@ -40,7 +40,7 @@ instance/
 Thumbs.db
 # Logs
 logs/
-*.log
+
 # Coverage reports
 htmlcov/
 .coverage
