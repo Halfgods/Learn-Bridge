@@ -27,7 +27,8 @@ function slugToSubjectName(slug: string): string {
   return decodeURIComponent(slug)
     .split("-")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
+    .join(" ")
+    .replace(/\b(And|Of|The|In|To|A|An|For|Or|At|By|With|Its)\b/g, (m) => m.toLowerCase());
 }
 
 // Longest Common Subsequence

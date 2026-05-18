@@ -1,13 +1,6 @@
 import { createFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
-import {
-  Calculator,
-  Beaker,
-  BookOpen,
-  Globe2,
-  Cpu,
-  Languages,
-  Flame,
-  Bell,
+import { Flame, Bell } from "lucide-react";
+import { getSubjectMeta } from "@/lib/subject-meta";
   ArrowRight,
   Trophy,
   Clock,
@@ -41,28 +34,18 @@ export const Route = createFileRoute("/app/")({
 });
 
 type SubjectCardMeta = {
-  icon: typeof BookOpen;
+  icon: typeof import("lucide-react").BookOpen;
   gradient: string;
   text: string;
   progress: number;
   lessons: number;
 };
 
-const subjectMeta: Record<string, SubjectCardMeta> = {
-  Mathematics: { icon: Calculator, gradient: "gradient-primary", text: "text-white", progress: 0, lessons: 0 },
-  Science: { icon: Beaker, gradient: "gradient-cyan", text: "text-white", progress: 0, lessons: 0 },
-  English: { icon: BookOpen, gradient: "gradient-yellow", text: "text-amber-900", progress: 0, lessons: 0 },
-  "Social Science": { icon: Globe2, gradient: "gradient-peach", text: "text-orange-900", progress: 0, lessons: 0 },
-  Computer: { icon: Cpu, gradient: "gradient-mint", text: "text-emerald-900", progress: 0, lessons: 0 },
-  Languages: { icon: Languages, gradient: "gradient-primary", text: "text-white", progress: 0, lessons: 0 },
-  "Environmental Studies": { icon: Globe2, gradient: "gradient-mint", text: "text-emerald-900", progress: 0, lessons: 0 },
-};
-
-const fallbackSubjects = [
-  { id: "math", name: "Mathematics", icon: Calculator, gradient: "gradient-primary", text: "text-white", progress: 0, lessons: 0 },
-  { id: "science", name: "Science", icon: Beaker, gradient: "gradient-cyan", text: "text-white", progress: 0, lessons: 0 },
-  { id: "english", name: "English", icon: BookOpen, gradient: "gradient-yellow", text: "text-amber-900", progress: 0, lessons: 0 },
-  { id: "social", name: "Social Science", icon: Globe2, gradient: "gradient-peach", text: "text-orange-900", progress: 0, lessons: 0 },
+const fallbackSubjects: SubjectCardMeta[] = [
+  { ...getSubjectMeta("Mathematics"), progress: 0, lessons: 0 },
+  { ...getSubjectMeta("Science"), progress: 0, lessons: 0 },
+  { ...getSubjectMeta("English"), progress: 0, lessons: 0 },
+  { ...getSubjectMeta("Social Science"), progress: 0, lessons: 0 },
 ];
 
 type Assignment = {
@@ -230,13 +213,7 @@ function Dashboard() {
       ? dynamicSubjects.map((name: string) => {
           const progress = realProgress?.[name] ?? 0;
           const totalChapters = allChaptersQ.data?.filter((c) => c.subjectName === name).length ?? 0;
-          const meta = subjectMeta[name] || {
-            icon: BookOpen,
-            gradient: "gradient-primary",
-            text: "text-white",
-            progress: 0,
-            lessons: 0,
-          };
+          const meta = getSubjectMeta(name);
           return {
             id: name.toLowerCase().replace(/\s+/g, "-"),
             name,

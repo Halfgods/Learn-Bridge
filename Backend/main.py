@@ -244,7 +244,13 @@ def get_subjects(std):
 @app.route('/api/curriculum/class/<int:std>/subject/<subject_name>/chapters', methods=['GET'])
 def get_chapters(std, subject_name):
     try:
-        curriculum = curriculum_collection.find_one({'std': std, 'subjectName': subject_name}, {'_id': 0, 'chapters': 1})
+        curriculum = curriculum_collection.find_one(
+            {'std': std, 'subjectName': {'$regex': f'^{re.escape(subject_name)}$', '$options': 'i'}},
+            {'_id': 0, 'chapters': 1}
+        )
+        if not curriculum:
+            # fallback: try exact match (legacy slugs)
+            curriculum = curriculum_collection.find_one({'std': std, 'subjectName': subject_name}, {'_id': 0, 'chapters': 1})
         if not curriculum:
             return jsonify({"error": "Curriculum not found"}), 404
             

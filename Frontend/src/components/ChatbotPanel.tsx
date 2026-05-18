@@ -48,7 +48,8 @@ function useSubjectContext(): { subject: string | null; chapter: string | null }
     const subject = decodeURIComponent(slug)
       .split("-")
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(" ");
+      .join(" ")
+      .replace(/\b(And|Of|The|In|To|A|An|For|Or|At|By|With|Its)\b/g, (m) => m.toLowerCase());
     return { subject, chapter: null };
   }
   return { subject: null, chapter: null };
