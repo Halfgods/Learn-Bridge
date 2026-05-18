@@ -111,8 +111,26 @@ def build_system_prompt(
         for i, r in enumerate(rag_context, 1):
             text = r["text"][:500].strip()
             ncert_ctx += f"\n[{i}] From {r['source']} (relevance {r['relevance_score']}):\n{text}\n"
+        ncert_ctx += (
+            "\n\nIMPORTANT: When you use information from the sources above, "
+            "cite the source by placing [1], [2] etc. at the end of each paragraph. "
+            "Every paragraph must cite the NCERT source(s) it used."
+        )
         prompt += ncert_ctx
     return prompt
+
+
+def build_citation_map(rag_context: list[dict]) -> dict[str, dict]:
+    """Build a citation ID -> source metadata map from RAG context."""
+    return {
+        str(i): {
+            "source": r["source"],
+            "relevance": r["relevance_score"],
+            "textbook": r.get("textbook", ""),
+            "chapter": r.get("chapter", ""),
+        }
+        for i, r in enumerate(rag_context, 1)
+    }
 
 
 def parse_subject_context(query: str) -> tuple[str, str | None, str | None]:
@@ -626,6 +644,9 @@ async def chat(
                     if rag_context:
                         yield json.dumps({"notice": f"📖 Found {len(rag_context)} relevant NCERT passages"}) + "\n"
                         logger.info("RAG semantic context: %d passages", len(rag_context))
+                if rag_context:
+                    citation_map = build_citation_map(rag_context)
+                    yield json.dumps({"type": "citations", "citations": citation_map}) + "\n"
             except Exception as e:
                 logger.warning("RAG search failed: %s", e)
 
@@ -654,9 +675,12 @@ async def chat_sync(body: ChatSyncBody):
     sid = (body.session_id or "default").strip() or "default"
 
     rag_context = None
+    citation_map = None
     if body.use_rag:
         try:
             rag_context = rag_search(body.query, top_k=3)
+            if rag_context:
+                citation_map = build_citation_map(rag_context)
         except Exception as e:
             logger.warning("RAG search failed: %s", e)
 
@@ -686,6 +710,8 @@ async def chat_sync(body: ChatSyncBody):
 
     _push(sid, "assistant", text)
     out: dict = {"reply": text, "provider": provider}
+    if citation_map:
+        out["citations"] = citation_map
     if thinking_out:
         out["thinking"] = thinking_out
     return out
