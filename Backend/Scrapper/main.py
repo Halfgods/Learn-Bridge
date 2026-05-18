@@ -11,6 +11,8 @@ from urllib.parse import quote_plus
 import asyncio
 from fastapi.concurrency import run_in_threadpool
 
+from RAG.router import router as rag_router
+
 _DEFAULT_ORIGINS = (
     "http://localhost:5173,http://127.0.0.1:5173,"
     "http://localhost:8080,http://127.0.0.1:8080,"
@@ -27,6 +29,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(rag_router)
 
 @app.get("/")
 def read_root():
