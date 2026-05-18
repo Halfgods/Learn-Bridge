@@ -26,9 +26,12 @@ export const Route = createFileRoute("/app/subject/$subjectId")({
 function slugToSubjectName(slug: string): string {
   return decodeURIComponent(slug)
     .split("-")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ")
-    .replace(/\b(And|Of|The|In|To|A|An|For|Or|At|By|With|Its)\b/g, (m) => m.toLowerCase());
+    .map((w, i) => {
+      const capped = w.charAt(0).toUpperCase() + w.slice(1);
+      if (i === 0) return capped;
+      return capped.replace(/\b(And|Of|The|In|To|A|An|For|Or|At|By|With|Its)\b/g, (m) => m.toLowerCase());
+    })
+    .join(" ");
 }
 
 // Longest Common Subsequence

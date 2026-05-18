@@ -125,7 +125,7 @@ def parse_subject_context(query: str) -> tuple[str, str | None, str | None]:
     subject: str | None = None
     chapter: str | None = None
     q = query
-    m = re.match(r'^/subject:([^/\n]+?)(?:\s+/chapter:([^/\n]+?))?\s+', q, re.IGNORECASE)
+    m = re.match(r'^/subject:([^/\n]+)(?:\s+/chapter:([^/\n]+))?\s+', q, re.IGNORECASE)
     if m:
         subject = m.group(1).strip()
         chapter = (m.group(2) or "").strip() or None

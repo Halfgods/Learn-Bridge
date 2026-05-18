@@ -1,16 +1,6 @@
 import { createFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
-import { Flame, Bell } from "lucide-react";
+import { Flame, Bell, ArrowRight, Trophy, Clock, Search, X, GraduationCap, KeyRound, CheckCircle2, Loader2 } from "lucide-react";
 import { getSubjectMeta } from "@/lib/subject-meta";
-  ArrowRight,
-  Trophy,
-  Clock,
-  Search,
-  X,
-  GraduationCap,
-  KeyRound,
-  CheckCircle2,
-  Loader2,
-} from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { useState, useMemo } from "react";

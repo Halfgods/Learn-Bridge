@@ -52,7 +52,7 @@ function Assessment() {
       fetch(apiPath(`/api/curriculum/class/${user.grade}/subjects`))
         .then((res) => parseApiJson<{ subjects?: string[] }>(res))
         .then((data) => {
-          const subjects = data.subjects || ["Mathematics", "Science", "English", "Social Science"];
+          const subjects = data.subjects || [];
           subjects.forEach((subject: string) => {
             queryClient.prefetchQuery({
               queryKey: ['chapters', user.grade, subject],

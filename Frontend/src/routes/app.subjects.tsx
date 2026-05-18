@@ -26,10 +26,7 @@ function SubjectsPage() {
     staleTime: Infinity,
   });
 
-  const list =
-    names && names.length
-      ? names
-      : ["Mathematics", "Science", "English", "Social Science"];
+  const list = names ?? [];
 
   return (
     <div className="p-6 lg:p-10 max-w-6xl mx-auto space-y-6">
