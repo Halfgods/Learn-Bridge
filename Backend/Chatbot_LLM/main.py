@@ -610,26 +610,29 @@ async def chat(
     if not cleaned_query:
         cleaned_query = query
 
-    rag_context = None
-    if use_rag:
-        try:
-            if subject and chapter:
-                rag_context = rag_get_chapter_context(chapter, subject=subject)
-                if rag_context:
-                    logger.info("RAG chapter context: %s / %s (%d chunks)", subject, chapter, rag_context[0]["total_chunks"])
-            if not rag_context:
-                rag_context = rag_search(cleaned_query, top_k=3)
-                if rag_context:
-                    logger.info("RAG semantic context: %d passages", len(rag_context))
-        except Exception as e:
-            logger.warning("RAG search failed: %s", e)
+    async def _rag_stream():
+        rag_context = None
+        if use_rag:
+            yield json.dumps({"notice": "📖 Looking up NCERT textbooks..."}) + "\n"
+            try:
+                if subject and chapter:
+                    rag_context = rag_get_chapter_context(chapter, subject=subject)
+                    if rag_context:
+                        n = rag_context[0]["total_chunks"]
+                        yield json.dumps({"notice": f"📖 Loaded Chapter: {chapter} ({n} sections)"}) + "\n"
+                        logger.info("RAG chapter context: %s / %s (%d chunks)", subject, chapter, n)
+                if not rag_context:
+                    rag_context = rag_search(cleaned_query, top_k=3)
+                    if rag_context:
+                        yield json.dumps({"notice": f"📖 Found {len(rag_context)} relevant NCERT passages"}) + "\n"
+                        logger.info("RAG semantic context: %d passages", len(rag_context))
+            except Exception as e:
+                logger.warning("RAG search failed: %s", e)
 
-    _push(session_id, "user", cleaned_query)
+        _push(session_id, "user", cleaned_query)
+        model = _select_model(cleaned_query, deep_research)
+        logger.info("Chat | subject=%s chapter=%s model=%s rag=%s", subject, chapter, model, bool(rag_context))
 
-    model = _select_model(cleaned_query, deep_research)
-    logger.info("Chat | subject=%s chapter=%s model=%s rag=%s", subject, chapter, model, bool(rag_context))
-
-    async def _stream_with_spelling():
         if reason:
             yield json.dumps({"notice": reason}) + "\n"
         if model == _deep_model():
@@ -639,7 +642,7 @@ async def chat(
             async for chunk in _stream_with_fallback(session_id, cleaned_query, model, subject=subject, chapter=chapter, rag_context=rag_context):
                 yield chunk
 
-    return StreamingResponse(_stream_with_spelling(), media_type="application/x-ndjson")
+    return StreamingResponse(_rag_stream(), media_type="application/x-ndjson")
 
 
 @app.post("/chat/sync")
